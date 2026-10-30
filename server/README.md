@@ -41,8 +41,8 @@ src/
 
 Users sign in with their Memtime API key. The server checks it with one upstream
 call (`GET /clients?limit=1`), then keeps it in an in-memory session and gives the
-browser an HttpOnly cookie (`memtime_sid`, SameSite=Strict, Path=/api, `Secure` in
-production). The key is never sent back to the browser. See
+browser an HttpOnly cookie (`memtime_sid`, SameSite=Strict, Path=/api, `Secure` unless
+`COOKIE_SECURE=false`). The key is never sent back to the browser. See
 [ADR 0003](../docs/adr/0003-in-memory-sessions-bound-to-api-key.md).
 
 | Route                 | Result                                                                                                                                        |
@@ -54,12 +54,13 @@ production). The key is never sent back to the browser. See
 Later routes use `requireSession(store)`, which puts the session on `res.locals.session`
 (read it with `getSession(res)`) or answers 401.
 
-| Variable               | Default   | Meaning                                               |
-| ---------------------- | --------- | ----------------------------------------------------- |
-| `SESSION_TTL_MS`       | `3600000` | How long a sign-in lasts (absolute, not extended)     |
-| `SIGN_IN_RATE_LIMIT`   | `10`      | Sign-in attempts per IP per 15 minutes (429 beyond)   |
-| `MAX_SESSIONS`         | `1000`    | Most sessions at once (sign-in answers 503 when full) |
-| `MAX_SESSIONS_PER_KEY` | `5`       | Most sessions per API key (the oldest is dropped)     |
+| Variable               | Default   | Meaning                                                          |
+| ---------------------- | --------- | ---------------------------------------------------------------- |
+| `SESSION_TTL_MS`       | `3600000` | How long a sign-in lasts (absolute, not extended)                |
+| `SIGN_IN_RATE_LIMIT`   | `10`      | Sign-in attempts per IP per 15 minutes (429 beyond)              |
+| `MAX_SESSIONS`         | `1000`    | Most sessions at once (sign-in answers 503 when full)            |
+| `MAX_SESSIONS_PER_KEY` | `5`       | Most sessions per API key (the oldest is dropped)                |
+| `COOKIE_SECURE`        | `true`    | `Secure` flag on the session cookie; `false` only for local http |
 
 POST, PUT and PATCH requests must be `Content-Type: application/json` (415 otherwise).
 

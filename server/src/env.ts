@@ -8,6 +8,11 @@ const envSchema = z.object({
   SIGN_IN_RATE_LIMIT: z.coerce.number().int().positive().default(10),
   MAX_SESSIONS: z.coerce.number().int().positive().default(1000),
   MAX_SESSIONS_PER_KEY: z.coerce.number().int().positive().default(5),
+  // Secure unless explicitly turned off, so a deploy that forgets it stays safe.
+  COOKIE_SECURE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
 })
 
 export type Env = z.infer<typeof envSchema>

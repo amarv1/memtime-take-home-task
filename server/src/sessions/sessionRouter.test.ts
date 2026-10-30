@@ -12,11 +12,8 @@ describe('session routes', () => {
   let time = 1_700_000_000_000
   const stores: ReturnType<typeof createSessionStore>[] = []
 
-  function setup(
-    nodeEnv: 'development' | 'production' | 'test' = 'test',
-    extra: NodeJS.ProcessEnv = {},
-  ) {
-    const env = loadEnv({ NODE_ENV: nodeEnv, MEMTIME_API_URL: UPSTREAM, ...extra })
+  function setup(extra: NodeJS.ProcessEnv = {}) {
+    const env = loadEnv({ MEMTIME_API_URL: UPSTREAM, COOKIE_SECURE: 'false', ...extra })
     const store = createSessionStore({
       ttlMs: env.SESSION_TTL_MS,
       maxSessions: env.MAX_SESSIONS,
@@ -52,7 +49,7 @@ describe('session routes', () => {
 
   describe('POST /api/session', () => {
     it('answers 503 when the session store is full', async () => {
-      const { app } = setup('test', { MAX_SESSIONS: '1' })
+      const { app } = setup({ MAX_SESSIONS: '1' })
       upstream(200)
       await request(app).post('/api/session').send({ apiKey: 'a' }).expect(200)
 
@@ -90,8 +87,8 @@ describe('session routes', () => {
       expect(cookie).not.toContain(KEY)
     })
 
-    it('marks the cookie Secure in production', async () => {
-      const { app } = setup('production')
+    it('marks the cookie Secure by default', async () => {
+      const { app } = setup({ COOKIE_SECURE: undefined })
       upstream(200)
 
       const res = await request(app).post('/api/session').send({ apiKey: KEY })

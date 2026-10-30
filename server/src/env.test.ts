@@ -10,11 +10,18 @@ describe('loadEnv', () => {
       SIGN_IN_RATE_LIMIT: 10,
       MAX_SESSIONS: 1000,
       MAX_SESSIONS_PER_KEY: 5,
+      COOKIE_SECURE: true,
     })
   })
 
   it('parses PORT as a number', () => {
     expect(loadEnv({ PORT: '4000' }).PORT).toBe(4000)
+  })
+
+  it('only turns off COOKIE_SECURE when set to false', () => {
+    expect(loadEnv({ NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true)
+    expect(loadEnv({ COOKIE_SECURE: 'false' }).COOKIE_SECURE).toBe(false)
+    expect(() => loadEnv({ COOKIE_SECURE: '0' })).toThrow(/COOKIE_SECURE/)
   })
 
   it('throws a readable error for invalid values', () => {

@@ -44,14 +44,14 @@ export function createApp({
       store: sessionStore,
       memtimeApiUrl: env.MEMTIME_API_URL,
       ttlMs: env.SESSION_TTL_MS,
-      secureCookies: env.NODE_ENV === 'production',
+      secureCookies: env.COOKIE_SECURE,
     }),
   )
 
   app.use(notFound)
   app.use(
     endSessionOnRevokedKey(sessionStore, {
-      secureCookies: env.NODE_ENV === 'production',
+      secureCookies: env.COOKIE_SECURE,
     }),
   )
   app.use(errorHandler)

@@ -12,7 +12,7 @@ Users sign in with their own Memtime API key. By [0002](0002-lightweight-server-
 We will use cookie sessions that hold the key in server memory:
 
 - Signing in checks the key with one upstream call (`GET /clients?limit=1`). If it is accepted, the server creates a session `{ apiKey, expiresAt }` in memory and sets a cookie with a random session id (32 random bytes, base64url).
-- The cookie is `HttpOnly` and `SameSite=Strict`, limited to `/api`, and `Secure` in production. It never contains the key.
+- The cookie is `HttpOnly` and `SameSite=Strict`, limited to `/api`, and `Secure` by default (`COOKIE_SECURE=false` turns it off for local development over http). It never contains the key.
 - A session lasts 1 hour from sign in. The limit is absolute: activity does not extend it. Expired sessions are rejected when read and swept every minute.
 - Signing in again replaces the old session. Signing out deletes it.
 - `/api/*` routes that call Memtime use a `requireSession` middleware to get the key.
