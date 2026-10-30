@@ -34,7 +34,7 @@ const envSchema = z.object({
   SESSION_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
   TIME_ENTRIES_CACHE_TTL_MS: z.coerce.number().int().positive().default(300_000),
   HIERARCHY_CACHE_TTL_MS: z.coerce.number().int().positive().default(300_000),
-  TIME_ENTRIES_KEEP_MS: z.coerce.number().int().positive().default(3_600_000),
+  TIME_ENTRIES_KEEP_MS: z.coerce.number().int().positive().default(604_800_000),
   TIME_ENTRIES_CACHE_MAX_ENTRIES: z.coerce.number().int().positive().default(200_000),
   MEMTIME_BREAKER_THRESHOLD: z.coerce.number().int().positive().default(5),
   MEMTIME_BREAKER_OPEN_MS: z.coerce.number().int().positive().default(30_000),
