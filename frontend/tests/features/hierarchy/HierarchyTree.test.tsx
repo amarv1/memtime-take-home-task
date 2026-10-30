@@ -46,7 +46,7 @@ function renderAt(route: string) {
   return renderWithProviders(
     <>
       <Routes>
-        <Route path="/tasks/:taskId" element={<HierarchyTree />} />
+        <Route path="/tasks/:taskId/entries" element={<HierarchyTree />} />
         <Route path="/" element={<HierarchyTree />} />
       </Routes>
       <Location />
@@ -543,7 +543,7 @@ describe('HierarchyTree', () => {
 
       await user.click(screen.getByText('Write copy'))
 
-      expect(pathname()).toBe('/tasks/399')
+      expect(pathname()).toBe('/tasks/399/entries')
       expect(item('Write copy')).toHaveAttribute('aria-selected', 'true')
       expect(item('Design homepage')).toHaveAttribute('aria-selected', 'false')
       expect(item('Ship it')).toHaveAttribute('aria-selected', 'false')
@@ -567,7 +567,7 @@ describe('HierarchyTree', () => {
 
       await user.keyboard(keys)
 
-      expect(pathname()).toBe('/tasks/400')
+      expect(pathname()).toBe('/tasks/400/entries')
       expect(item('Ship it')).toHaveAttribute('aria-selected', 'true')
     })
 
@@ -589,7 +589,7 @@ describe('HierarchyTree', () => {
 
       await user.click(screen.getByRole('button', { name: 'Back' }))
 
-      expect(pathname()).toBe('/tasks/399')
+      expect(pathname()).toBe('/tasks/399/entries')
       expect(item('Write copy')).toHaveAttribute('aria-selected', 'true')
       expect(item('Ship it')).toHaveAttribute('aria-selected', 'false')
       expect(taskRequests(requests)).toEqual([])
@@ -613,7 +613,7 @@ describe('HierarchyTree', () => {
 
     it('expands the path and selects the task with the minimum of requests', async () => {
       const { requests } = mockHierarchy()
-      renderAt('/tasks/399')
+      renderAt('/tasks/399/entries')
 
       const task = await screen.findByRole('treeitem', { name: 'Write copy' })
 
@@ -629,7 +629,7 @@ describe('HierarchyTree', () => {
 
     it('marks the client and project that hold the task, even after collapsing', async () => {
       mockHierarchy()
-      const { user } = renderAt('/tasks/399')
+      const { user } = renderAt('/tasks/399/entries')
       await screen.findByRole('treeitem', { name: 'Write copy' })
 
       expect(item('Acme Corp')).toHaveAttribute('aria-current', 'true')
@@ -659,7 +659,7 @@ describe('HierarchyTree', () => {
           return HttpResponse.json(hierarchyFixture.projectsByClient[1]?.[0])
         }),
       )
-      renderAt('/tasks/399')
+      renderAt('/tasks/399/entries')
 
       await waitFor(() =>
         expect(screen.getByRole('status')).toHaveTextContent('Opening task #399…'),
@@ -673,7 +673,7 @@ describe('HierarchyTree', () => {
 
     it('makes the task the tab stop and scrolls to it without moving focus', async () => {
       mockHierarchy()
-      renderAt('/tasks/399')
+      renderAt('/tasks/399/entries')
 
       const task = await screen.findByRole('treeitem', { name: 'Write copy' })
 
@@ -688,7 +688,7 @@ describe('HierarchyTree', () => {
         projectsByClient: { 120: manyProjects(120, 150) },
         tasksByProject: { 1130: manyTasks(1130, 150) },
       })
-      renderAt('/tasks/5120')
+      renderAt('/tasks/5120/entries')
 
       const task = await screen.findByRole('treeitem', {
         name: 'Task 5120 for Project 1130',
@@ -706,7 +706,7 @@ describe('HierarchyTree', () => {
 
     it('does not open the client again once the user collapsed it', async () => {
       const { requests } = mockHierarchy()
-      const { user } = renderAt('/tasks/399')
+      const { user } = renderAt('/tasks/399/entries')
       await screen.findByRole('treeitem', { name: 'Write copy' })
       const before = requests.length
 
@@ -720,7 +720,7 @@ describe('HierarchyTree', () => {
     it('stops at the project when the task is not in its list', async () => {
       const { requests } = mockHierarchy()
       server.use(http.get('/api/tasks/777', () => HttpResponse.json(buildTask(777, 102))))
-      renderAt('/tasks/777')
+      renderAt('/tasks/777/entries')
 
       expect(
         await screen.findByRole('treeitem', { name: 'No tasks' }),
@@ -734,7 +734,7 @@ describe('HierarchyTree', () => {
 
     it('shows an alert for an unknown task, and clearing goes home', async () => {
       const { requests } = mockHierarchy()
-      const { user } = renderAt('/tasks/9999')
+      const { user } = renderAt('/tasks/9999/entries')
 
       expect(await screen.findByRole('alert')).toHaveTextContent(
         "Task #9999 wasn't found.",
@@ -751,7 +751,7 @@ describe('HierarchyTree', () => {
     it("shows an alert when the task's project is gone", async () => {
       mockHierarchy()
       server.use(http.get('/api/tasks/55', () => HttpResponse.json(buildTask(55, 999))))
-      renderAt('/tasks/55')
+      renderAt('/tasks/55/entries')
 
       expect(await screen.findByRole('alert')).toHaveTextContent(
         "Couldn't find the project for task #55.",
@@ -763,7 +763,7 @@ describe('HierarchyTree', () => {
       'shows an alert for the invalid id %s without asking the API',
       async (id) => {
         const { requests } = mockHierarchy()
-        renderAt(`/tasks/${id}`)
+        renderAt(`/tasks/${id}/entries`)
 
         expect(await screen.findByRole('alert')).toHaveTextContent(
           "That task link isn't valid.",
@@ -779,7 +779,7 @@ describe('HierarchyTree', () => {
           HttpResponse.json({ error: 'boom' }, { status: 500 }),
         ),
       )
-      const { user } = renderAt('/tasks/399')
+      const { user } = renderAt('/tasks/399/entries')
 
       expect(await screen.findByRole('alert')).toHaveTextContent(
         "Couldn't open task #399. boom",

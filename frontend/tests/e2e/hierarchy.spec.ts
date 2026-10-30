@@ -59,6 +59,9 @@ async function mockApi(page: Page) {
         },
       })
     }
+    if (path === '/api/tasks/398/entries') {
+      return route.fulfill({ json: { items: [], total: 0, limit: 25, offset: 0 } })
+    }
     if (path === '/api/projects/101') {
       return route.fulfill({
         json: { id: 101, clientId: 1, name: 'Website', status: 'pending', ...timestamps },
@@ -92,14 +95,16 @@ test('browses clients, projects and tasks, loading each level on expand', async 
   await expect(task).toContainText('Completed')
 
   await task.click()
-  await expect(page).toHaveURL('/tasks/398')
+  await expect(page).toHaveURL('/tasks/398/entries')
   await expect(task).toHaveAttribute('aria-selected', 'true')
 })
 
 test('opens a task link with its client and project expanded', async ({ page }) => {
   const calls = await mockApi(page)
 
+  // The old task URL redirects to the entries page.
   await page.goto('/tasks/398')
+  await expect(page).toHaveURL('/tasks/398/entries')
 
   const task = page.getByRole('treeitem', { name: 'Design homepage' })
   await expect(task).toHaveAttribute('aria-selected', 'true')
@@ -119,5 +124,6 @@ test('opens a task link with its client and project expanded', async ({ page }) 
     'aria-current',
     'true',
   )
-  expect(calls).toHaveLength(5)
+  // The entries page adds one call of its own on top of the five that open the tree.
+  expect(calls.filter((call) => !call.includes('/entries'))).toHaveLength(5)
 })

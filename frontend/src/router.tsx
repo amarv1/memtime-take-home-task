@@ -5,6 +5,7 @@ import { RouteError } from '@/components/RouteError'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { HierarchyPage } from '@/pages/HierarchyPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { TaskEntriesPage } from '@/pages/TaskEntriesPage'
 
 export const routes: RouteObject[] = [
   {
@@ -19,7 +20,12 @@ export const routes: RouteObject[] = [
             element: <AppLayout />,
             children: [
               { path: '/', element: <HierarchyPage /> },
-              { path: '/tasks/:taskId', element: <HierarchyPage /> },
+              // Old task links keep working.
+              {
+                path: '/tasks/:taskId',
+                element: <Navigate to="entries" replace />,
+              },
+              { path: '/tasks/:taskId/entries', element: <TaskEntriesPage /> },
             ],
           },
         ],

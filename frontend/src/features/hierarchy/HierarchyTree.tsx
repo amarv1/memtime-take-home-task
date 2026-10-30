@@ -11,7 +11,7 @@ import { useTreeKeyboard } from './useTreeKeyboard'
 
 /**
  * Clients, their projects and their tasks. Each level loads when its parent is expanded.
- * The task in the URL (`/tasks/:taskId`) is the selection; opening it reveals its path.
+ * The task in the URL (`/tasks/:taskId/entries`) is the selection; opening it reveals its path.
  */
 export function HierarchyTree() {
   const clients = useClients()
@@ -117,7 +117,7 @@ export function HierarchyTree() {
         toggle,
         selectedTaskId: taskId,
         selectTask: (id) => {
-          if (id !== taskId) void navigate(`/tasks/${id}`)
+          if (id !== taskId) void navigate(`/tasks/${id}/entries`)
         },
         target,
         onSelectedRow: (element, key) => {
