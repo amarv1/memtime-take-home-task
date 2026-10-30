@@ -70,3 +70,7 @@ const ENTRY_ID_PATTERN = /^(0|[1-9]\d{0,9})$/
 export function parseEntryId(raw: string | undefined): number | null {
   return raw !== undefined && ENTRY_ID_PATTERN.test(raw) ? Number(raw) : null
 }
+
+export function deleteTaskEntry(taskId: number, entryId: number): Promise<void> {
+  return apiFetch<void>(`/api/tasks/${taskId}/entries/${entryId}`, { method: 'DELETE' })
+}

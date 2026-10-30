@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { toast } from 'sonner'
 import { Route, Routes, useLocation } from 'react-router'
 import { buildEntry, mockEntries } from '../support/entries'
 import { mockHierarchy } from '../support/hierarchy'
@@ -191,5 +192,116 @@ describe('TaskEntriesPage', () => {
 
     expect(screen.getByRole('heading', { name: 'Task not found' })).toBeInTheDocument()
     expect(requests).toEqual([])
+  })
+
+  describe('deleting', () => {
+    function mockDelete(entries: ReturnType<typeof many>, respond?: () => Response) {
+      const deleted: string[] = []
+      server.use(
+        http.get('/api/tasks/:taskId/entries', ({ request }) => {
+          const url = new URL(request.url)
+          const limit = Number(url.searchParams.get('limit'))
+          const offset = Number(url.searchParams.get('offset'))
+          return HttpResponse.json({
+            items: entries.slice(offset, offset + limit),
+            total: entries.length,
+            limit,
+            offset,
+          })
+        }),
+        http.delete('/api/tasks/:taskId/entries/:entryId', ({ params }) => {
+          if (respond) return respond()
+          deleted.push(String(params.entryId))
+          entries.splice(
+            entries.findIndex((e) => e.id === Number(params.entryId)),
+            1,
+          )
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      return deleted
+    }
+
+    beforeEach(() => vi.spyOn(toast, 'success').mockImplementation(() => 1))
+
+    it('asks first, and does nothing on cancel', async () => {
+      const deleted = mockDelete(many(2))
+      const { user } = renderAt('/tasks/398/entries')
+
+      await user.click(await screen.findByRole('button', { name: 'Delete entry 1' }))
+      const dialog = await screen.findByRole('alertdialog')
+      expect(dialog).toHaveTextContent('Delete time entry #1?')
+      expect(dialog).toHaveTextContent('“Entry 1” will be removed')
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+      expect(deleted).toEqual([])
+      expect(screen.getAllByRole('row')).toHaveLength(3)
+    })
+
+    it('deletes the entry, refreshes the list and says so', async () => {
+      const deleted = mockDelete(many(2))
+      const { user } = renderAt('/tasks/398/entries')
+
+      await user.click(await screen.findByRole('button', { name: 'Delete entry 1' }))
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Delete',
+        }),
+      )
+
+      await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(2))
+      expect(deleted).toEqual(['1'])
+      expect(screen.queryByRole('button', { name: 'Delete entry 1' })).toBeNull()
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(toast.success).toHaveBeenCalledWith('Time entry #1 deleted')
+    })
+
+    it('shows the empty state after the last entry goes', async () => {
+      mockDelete(many(1))
+      const { user } = renderAt('/tasks/398/entries')
+
+      await user.click(await screen.findByRole('button', { name: 'Delete entry 1' }))
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Delete',
+        }),
+      )
+
+      expect(
+        await screen.findByText('No time entries for this task yet.'),
+      ).toBeInTheDocument()
+    })
+
+    it('moves to the last page when the current one becomes empty', async () => {
+      mockDelete(many(26))
+      const { user } = renderAt('/tasks/398/entries?page=2')
+
+      await user.click(await screen.findByRole('button', { name: 'Delete entry 26' }))
+      await user.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Delete',
+        }),
+      )
+
+      expect(await screen.findByText('Showing 1–25 of 25')).toBeInTheDocument()
+      expect(location()).toBe('/tasks/398/entries?page=1')
+    })
+
+    it.each([
+      [404, "This time entry doesn't exist any more."],
+      [502, "Couldn't delete the time entry. Please try again."],
+    ])('keeps the dialog open and explains a %i answer', async (status, message) => {
+      mockDelete(many(2), () => HttpResponse.json({ error: 'raw' }, { status }))
+      const { user } = renderAt('/tasks/398/entries')
+
+      await user.click(await screen.findByRole('button', { name: 'Delete entry 1' }))
+      const dialog = await screen.findByRole('alertdialog')
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
+
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent(message)
+      expect(toast.success).not.toHaveBeenCalled()
+      expect(screen.getAllByRole('row', { hidden: true })).toHaveLength(3)
+    })
   })
 })

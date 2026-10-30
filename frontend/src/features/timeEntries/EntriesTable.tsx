@@ -9,9 +9,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { TimeEntry } from './api'
+import { DeleteEntryButton } from './DeleteEntryButton'
 import { formatDateTime, formatDuration } from './format'
 
-/** The entries as rows: ID, Task ID, Comment, Start, End, Duration and Created At, with an Edit link. */
+/** The entries as rows: the entry's fields, its duration, and Edit and Delete actions. */
 export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
   return (
     <Table>
@@ -49,7 +50,7 @@ export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
             <TableCell className="whitespace-nowrap">
               {formatDateTime(entry.createdAt)}
             </TableCell>
-            <TableCell>
+            <TableCell className="flex items-center gap-1">
               <Link
                 to={`/tasks/${entry.taskId}/entries/${entry.id}/edit`}
                 aria-label={`Edit entry ${entry.id}`}
@@ -58,6 +59,7 @@ export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
                 <Pencil className="size-3.5" aria-hidden />
                 Edit
               </Link>
+              <DeleteEntryButton entry={entry} />
             </TableCell>
           </TableRow>
         ))}

@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-query'
 import {
   createTaskEntry,
+  deleteTaskEntry,
   getTaskEntry,
   ENTRIES_PAGE_SIZE,
   listTaskEntries,
@@ -70,5 +71,19 @@ export function useUpdateEntry(taskId: number, entryId: number) {
         // The form that saved is about to close; whatever shows these next refetches on mount.
         refetchType: 'none',
       }),
+  })
+}
+
+/** Deletes an entry of a task; the task's cached entries are refetched after. */
+export function useDeleteEntry(taskId: number) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationKey: ['entries', 'delete'],
+    mutationFn: (entryId: number) => deleteTaskEntry(taskId, entryId),
+    onSuccess: (_data, entryId) => {
+      queryClient.removeQueries({ queryKey: entryKeys.detail(taskId, entryId) })
+      // The list is on screen, so this refetches it.
+      return queryClient.invalidateQueries({ queryKey: entryKeys.forTask(taskId) })
+    },
   })
 }
