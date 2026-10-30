@@ -3,6 +3,7 @@ import express from 'express'
 import helmet from 'helmet'
 import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
+import { memtimeRouter } from './memtime/memtimeRouter.ts'
 import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from './middleware/errorHandler.ts'
 import { requestContext, requestLogger } from './middleware/requestContext.ts'
@@ -49,6 +50,11 @@ export function createApp({
       ttlMs: env.SESSION_TTL_MS,
       secureCookies: env.COOKIE_SECURE,
     }),
+  )
+
+  app.use(
+    '/api',
+    memtimeRouter({ store: sessionStore, memtimeApiUrl: env.MEMTIME_API_URL }),
   )
 
   app.use(notFound)

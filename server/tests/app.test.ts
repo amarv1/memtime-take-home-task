@@ -21,6 +21,13 @@ describe('app', () => {
     expect(res.body).toEqual({ error: 'Not found' })
   })
 
+  it('still returns a JSON 404 for unknown /api routes without a session', async () => {
+    const res = await request(app).get('/api/clients/1/nope')
+
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual({ error: 'Not found' })
+  })
+
   it('does not reveal that it runs on Express', async () => {
     const res = await request(app).get('/api/health')
 
