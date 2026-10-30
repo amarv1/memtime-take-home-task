@@ -3,6 +3,16 @@ import { toast } from 'sonner'
 import { sessionQueryKey } from '@/features/auth/hooks'
 import { ApiError } from '@/lib/api'
 
+/**
+ * Retry a failed query twice, but never a 4xx: the request itself is wrong (or refused),
+ * and asking again only wastes upstream calls.
+ */
+export function shouldRetry(failureCount: number, error: Error): boolean {
+  const clientError =
+    error instanceof ApiError && error.status >= 400 && error.status < 500
+  return failureCount < 2 && !clientError
+}
+
 /** Builds a client that signs the user out locally when any call returns 401. */
 export function createQueryClient() {
   const handleError = (error: Error, key: readonly unknown[] | undefined) => {
@@ -25,6 +35,7 @@ export function createQueryClient() {
     defaultOptions: {
       queries: {
         staleTime: 60_000,
+        retry: shouldRetry,
         refetchOnWindowFocus: false,
       },
     },

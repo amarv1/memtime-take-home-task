@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { sessionQueryKey } from '@/features/auth/hooks'
 import { ApiError } from '@/lib/api'
-import { createQueryClient, queryClient } from '@/lib/queryClient'
+import { createQueryClient, queryClient, shouldRetry } from '@/lib/queryClient'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn() } }))
 
@@ -102,5 +102,26 @@ describe('createQueryClient', () => {
       .catch(noop)
     expect(toast.info).not.toHaveBeenCalled()
     expect(client.getQueryData(sessionQueryKey)).toEqual(session)
+  })
+})
+
+describe('shouldRetry', () => {
+  it.each([400, 404, 429])('never retries a %i', (status) => {
+    expect(shouldRetry(0, new ApiError(status, 'x'))).toBe(false)
+  })
+
+  it.each([500, 0])('retries a %i twice, then gives up', (status) => {
+    const error = new ApiError(status, 'x')
+    expect(shouldRetry(0, error)).toBe(true)
+    expect(shouldRetry(1, error)).toBe(true)
+    expect(shouldRetry(2, error)).toBe(false)
+  })
+
+  it('retries errors that are not API errors', () => {
+    expect(shouldRetry(0, new Error('x'))).toBe(true)
+  })
+
+  it('is the default for queries', () => {
+    expect(createQueryClient().getDefaultOptions().queries?.retry).toBe(shouldRetry)
   })
 })
