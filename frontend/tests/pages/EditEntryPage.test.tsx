@@ -169,6 +169,26 @@ describe('EditEntryPage', () => {
     expect(toast.success).not.toHaveBeenCalled()
   })
 
+  it('shows the server message and a countdown while Memtime is unavailable', async () => {
+    mockUpdate(() =>
+      HttpResponse.json(
+        { error: 'Memtime is unavailable right now. Try again in a minute.' },
+        { status: 503, headers: { 'Retry-After': '30' } },
+      ),
+    )
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+    await screen.findByLabelText('Comment')
+
+    await user.type(field('Comment'), '!')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Memtime is unavailable right now.',
+    )
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled()
+    expect(field('Comment')).toHaveValue('Fix the header!')
+  })
+
   it('keeps the seconds of a time that was not touched', async () => {
     const exact = {
       ...entry,

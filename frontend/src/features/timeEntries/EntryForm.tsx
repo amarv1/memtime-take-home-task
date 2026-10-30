@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
-import { withWait } from '@/lib/rateLimit'
+import { isUnavailable, useCountdown, withWait } from '@/lib/rateLimit'
 import type { NewEntry, TimeEntry } from './api'
 import {
   buildSchema,
@@ -64,6 +64,8 @@ export function EntryForm({
   const lastDraft = useRef<NewEntry | null>(null)
 
   const error = create.error instanceof ApiError ? create.error : undefined
+  // While Memtime is down, saving waits for the time the server named.
+  const secondsLeft = useCountdown(create.error)
   const warnings = error?.status === 409 ? (error.warnings ?? []) : []
   // A 400 the server pinned to a field shows under that field, not in the alert.
   const serverField =
@@ -175,12 +177,14 @@ export function EntryForm({
       )}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={create.isPending}>
+        <Button type="submit" disabled={create.isPending || secondsLeft > 0}>
           {create.isPending ? (
             <>
               <Loader2 className="animate-spin" aria-hidden />
               Saving…
             </>
+          ) : secondsLeft > 0 ? (
+            `Try again in ${secondsLeft}s`
           ) : (
             submitLabel
           )}
@@ -219,6 +223,7 @@ function errorMessage(error: Error, notFoundMessage: string): string {
     if (error.status === 404) return notFoundMessage
     if (error.status === 400 || error.status === 0) return error.message
     if (error.status === 429) return withWait(error)
+    if (isUnavailable(error)) return error.message
   }
   return "Couldn't save the time entry. Please try again."
 }

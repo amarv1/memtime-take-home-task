@@ -340,6 +340,27 @@ describe('AddEntryPage', () => {
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
+  it('shows the server message and a countdown while Memtime is unavailable', async () => {
+    mockCreate(() =>
+      HttpResponse.json(
+        { error: 'Memtime is unavailable right now. Try again in a minute.' },
+        { status: 503, headers: { 'Retry-After': '30' } },
+      ),
+    )
+    const { user } = renderAt('/tasks/398/entries/new')
+
+    await user.type(field('Comment'), 'Work')
+    await user.click(screen.getByRole('button', { name: 'Add entry' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Memtime is unavailable right now.',
+    )
+    expect(screen.getByRole('button', { name: /Try again in \d+s/ })).toBeDisabled()
+
+    await user.type(field('Comment'), '!')
+    expect(screen.getByRole('button', { name: 'Add entry' })).toBeEnabled()
+  })
+
   it('disables saving while the request runs', async () => {
     mockCreate(async () => {
       await delay(50)

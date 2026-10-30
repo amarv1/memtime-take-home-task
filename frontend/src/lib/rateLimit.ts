@@ -10,12 +10,19 @@ export function isRateLimited(error: unknown): error is ApiError {
   return error instanceof ApiError && error.status === 429
 }
 
+/** The server answers 503 while Memtime is down (its circuit is open) and says when to try again. */
+export function isUnavailable(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === 503
+}
+
 function waitSeconds(error: unknown): number {
-  return isRateLimited(error) ? (error.retryAfterSeconds ?? DEFAULT_WAIT_SECONDS) : 0
+  return isRateLimited(error) || isUnavailable(error)
+    ? (error.retryAfterSeconds ?? DEFAULT_WAIT_SECONDS)
+    : 0
 }
 
 /**
- * Seconds left until a rate-limited `error` may be retried; 0 for any other error, or once
+ * Seconds left until a rate-limited or unavailable `error` may be retried; 0 for any other error, or once
  * the wait is over. The deadline is fixed when the error object first shows up, so re-renders
  * don't restart it.
  */
