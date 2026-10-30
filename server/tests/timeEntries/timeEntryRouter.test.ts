@@ -518,7 +518,7 @@ describe('POST /api/tasks/:taskId/entries', () => {
   })
 
   it.each([
-    [400, 400, 'Memtime did not accept this time entry.'],
+    [400, 400, 'Memtime did not accept this time entry: raw'],
     [404, 404, 'Task not found'],
     [500, 502, 'Memtime could not save the time entry.'],
   ])('maps upstream %i to %i', async (upstream, status, error) => {
@@ -528,6 +528,19 @@ describe('POST /api/tasks/:taskId/entries', () => {
 
     expect(res.status).toBe(status)
     expect(json(res).error).toBe(error)
+  })
+
+  it.each([
+    ['a body that is not JSON', () => HttpResponse.text('nope', { status: 400 })],
+    ['an error that is not text', () => HttpResponse.json({ error: 1 }, { status: 400 })],
+    ['a blank error', () => HttpResponse.json({ error: '  ' }, { status: 400 })],
+  ])('keeps the plain 400 message for %s', async (_name, respond) => {
+    mockUpstream(respond)
+
+    const res = await create(valid)
+
+    expect(res.status).toBe(400)
+    expect(json(res).error).toBe('Memtime did not accept this time entry.')
   })
 
   it('passes a rate limit on with its Retry-After', async () => {
@@ -817,7 +830,7 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
     })
 
     it.each([
-      [400, 400, 'Memtime did not accept this time entry.'],
+      [400, 400, 'Memtime did not accept this time entry: raw'],
       [404, 404, 'Time entry not found'],
       [500, 502, 'Memtime could not save the time entry.'],
     ])('maps upstream %i to %i', async (upstream, status, error) => {

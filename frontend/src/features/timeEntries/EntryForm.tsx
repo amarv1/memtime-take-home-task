@@ -216,8 +216,8 @@ function Field({ label, id, error, children }: FieldProps) {
 function errorMessage(error: Error, notFoundMessage: string): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return notFoundMessage
-    if (error.status === 400) return `The entry wasn't accepted. ${error.message}`
-    if (error.status === 429 || error.status === 0) return error.message
+    if (error.status === 400 || error.status === 429 || error.status === 0)
+      return error.message
   }
   return "Couldn't save the time entry. Please try again."
 }

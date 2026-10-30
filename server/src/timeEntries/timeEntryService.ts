@@ -39,6 +39,20 @@ export function throwIfRateLimited(status: number, headers: Headers) {
   )
 }
 
+/** The `error` text of a Memtime error body (`{ "error": "..." }`), if it has one. */
+function upstreamReason(body: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (typeof parsed === 'object' && parsed !== null && 'error' in parsed) {
+      const { error } = parsed
+      if (typeof error === 'string' && error.trim() !== '') return error.trim()
+    }
+  } catch {
+    // Not JSON: no reason to show.
+  }
+  return undefined
+}
+
 const cacheKey = hashApiKey
 
 export interface NewEntry {
@@ -98,8 +112,15 @@ export function createTimeEntryService({ client, cache }: Options) {
     notFound: string,
   ): Promise<TimeEntry> {
     throwIfRateLimited(status, headers)
-    if (status === 400)
-      throw new HttpError(400, 'Memtime did not accept this time entry.')
+    if (status === 400) {
+      const reason = upstreamReason(body)
+      throw new HttpError(
+        400,
+        reason
+          ? `Memtime did not accept this time entry: ${reason}`
+          : 'Memtime did not accept this time entry.',
+      )
+    }
     if (status === 404) throw new HttpError(404, notFound)
     if (status < 200 || status >= 300)
       throw new HttpError(502, 'Memtime could not save the time entry.')

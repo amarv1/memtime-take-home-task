@@ -314,7 +314,7 @@ describe('AddEntryPage', () => {
 
   it.each([
     [404, "This task doesn't exist any more."],
-    [400, "The entry wasn't accepted. Bad dates"],
+    [400, 'Bad dates'],
     [429, 'Slow down'],
     [502, "Couldn't save the time entry. Please try again."],
   ])('explains a %i answer and keeps the input', async (status, message) => {
