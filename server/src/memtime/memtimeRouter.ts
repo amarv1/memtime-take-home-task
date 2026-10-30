@@ -1,10 +1,9 @@
 import { Router } from 'express'
 import type { Response } from 'express'
-import { logger } from '../logger.ts'
-import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { getSession, requireSession } from '../middleware/requireSession.ts'
 import type { SessionStore } from '../sessions/sessionStore.ts'
+import { createMemtimeClient } from './memtimeClient.ts'
 
 interface Options {
   store: SessionStore
@@ -53,8 +52,7 @@ export function memtimeRouter({
   timeoutMs = 10_000,
   fetch,
 }: Options) {
-  // String join on purpose: `new URL('/clients', base)` would drop the `/api/v1` prefix.
-  const baseUrl = memtimeApiUrl.replace(/\/+$/, '')
+  const client = createMemtimeClient({ memtimeApiUrl, timeoutMs, fetch })
 
   async function forward(
     res: Response,
@@ -62,47 +60,22 @@ export function memtimeRouter({
     query: Record<string, unknown>,
     routePath: string,
   ) {
-    const search = allowedQuery(query)
-    const url = `${baseUrl}${upstreamPath}${search ? `?${search}` : ''}`
-
-    let status: number
-    let body: string
-    let upstreamHeaders: Headers
-    try {
-      // Looked up per call so a patched global fetch (as in tests) is always picked up.
-      const upstream = await (fetch ?? globalThis.fetch)(url, {
-        headers: {
-          Authorization: `Bearer ${getSession(res).apiKey}`,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(timeoutMs),
-      })
-      status = upstream.status
-      upstreamHeaders = upstream.headers
-      body = await upstream.text()
-    } catch (err) {
-      // Log what failed, never the key or the URL: only the error name and its cause's message.
-      const reason = err instanceof Error ? err.name : 'unknown error'
-      const code =
-        err instanceof Error && err.cause instanceof Error
-          ? ` (${err.cause.message})`
-          : ''
-      logger.error(`Memtime request failed for ${routePath}: ${reason}${code}`)
-      throw new HttpError(502, "Couldn't reach Memtime. Please try again.")
-    }
-
-    if (status === 401) throw new MemtimeKeyRejectedError()
-    if (status >= 500) logger.warn(`Memtime returned ${status} for ${routePath}`)
+    const { status, headers, body } = await client.get(
+      getSession(res).apiKey,
+      upstreamPath,
+      allowedQuery(query),
+      routePath,
+    )
 
     for (const name of PASSED_HEADERS) {
-      const value = upstreamHeaders.get(name)
+      const value = headers.get(name)
       if (value !== null) res.setHeader(name, value)
     }
     // The data belongs to one user, so shared caches must not keep it.
     res.setHeader('Cache-Control', 'private, no-store')
     res
       .status(status)
-      .type(upstreamHeaders.get('content-type') ?? 'application/json')
+      .type(headers.get('content-type') ?? 'application/json')
       .send(body)
   }
 
