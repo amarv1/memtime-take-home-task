@@ -5,6 +5,7 @@ import type { Cache } from '../../src/cache/memoryCache.ts'
 import { logger } from '../../src/logger.ts'
 import { CircuitOpenError } from '../../src/memtime/circuitBreaker.ts'
 import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
+import { RateLimitedError } from '../../src/memtime/rateLimit.ts'
 import { MemtimeKeyRejectedError } from '../../src/middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../../src/middleware/errorHandler.ts'
 import { createTimeEntryService } from '../../src/timeEntries/timeEntryService.ts'
@@ -436,6 +437,26 @@ describe('timeEntryService', () => {
         const error = await writes[name]!.run(s).catch((e: unknown) => e)
 
         expect(error).toBeInstanceOf(CircuitOpenError)
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(1)
+      },
+    )
+
+    it.each(['create', 'update', 'delete'])(
+      'keeps the cache when our own rate-limit check refuses %s, since nothing was sent',
+      async (name) => {
+        mockEntries(many(3))
+        const real = createMemtimeClient({ memtimeApiUrl: BASE })
+        const refused = () => Promise.reject(new RateLimitedError(30))
+        const s = createTimeEntryService({
+          client: { ...real, post: refused, put: refused, delete: refused },
+          cache,
+        })
+        await s.getAllEntries(KEY)
+
+        const error = await writes[name]!.run(s).catch((e: unknown) => e)
+
+        expect(error).toBeInstanceOf(RateLimitedError)
         await s.getAllEntries(KEY)
         expect(calls).toHaveLength(1)
       },

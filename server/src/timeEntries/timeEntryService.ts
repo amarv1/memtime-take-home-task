@@ -4,7 +4,7 @@ import { CircuitOpenError } from '../memtime/circuitBreaker.ts'
 import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
-import { throwIfRateLimited } from '../memtime/rateLimit.ts'
+import { RateLimitedError, throwIfRateLimited } from '../memtime/rateLimit.ts'
 
 export interface TimeEntry {
   id: number
@@ -106,8 +106,9 @@ export function createTimeEntryService({ client, cache }: Options) {
   }
 
   /**
-   * Runs a write call. If its outcome is unknown (an error other than a rejected key or an open
-   * circuit, which sent nothing, or a 5xx), Memtime may still have applied it, so the cached list is dropped.
+   * Runs a write call. If its outcome is unknown (an error other than a rejected key, an open
+   * circuit or a refusal by our own rate-limit check, which sent nothing, or a 5xx), Memtime may
+   * still have applied it, so the cached list is dropped.
    */
   async function write(
     apiKey: string,
@@ -117,7 +118,13 @@ export function createTimeEntryService({ client, cache }: Options) {
     try {
       response = await call()
     } catch (err) {
-      if (!(err instanceof MemtimeKeyRejectedError || err instanceof CircuitOpenError))
+      if (
+        !(
+          err instanceof MemtimeKeyRejectedError ||
+          err instanceof CircuitOpenError ||
+          err instanceof RateLimitedError
+        )
+      )
         await invalidate(apiKey)
       throw err
     }
