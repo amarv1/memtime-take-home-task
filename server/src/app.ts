@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser'
 import express from 'express'
 import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
+import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from './middleware/errorHandler.ts'
 import { sessionRouter } from './sessions/sessionRouter.ts'
 import { createSessionStore } from './sessions/sessionStore.ts'
@@ -38,6 +39,11 @@ export function createApp({
   )
 
   app.use(notFound)
+  app.use(
+    endSessionOnRevokedKey(sessionStore, {
+      secureCookies: env.NODE_ENV === 'production',
+    }),
+  )
   app.use(errorHandler)
 
   return app

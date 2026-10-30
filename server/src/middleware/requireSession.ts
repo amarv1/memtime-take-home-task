@@ -1,4 +1,4 @@
-import type { RequestHandler, Response } from 'express'
+import type { CookieOptions, RequestHandler, Response } from 'express'
 import { HttpError } from './errorHandler.ts'
 import type { Session, SessionStore } from '../sessions/sessionStore.ts'
 
@@ -8,6 +8,11 @@ export function getSession(res: Response): Session {
 }
 
 export const SESSION_COOKIE = 'memtime_sid'
+
+/** One definition so setting and clearing the cookie always use the same name, path and flags. */
+export function sessionCookieOptions(secure: boolean): CookieOptions {
+  return { httpOnly: true, sameSite: 'strict', path: '/api', secure }
+}
 
 /** Reads the session id from the request cookies, if there is one. */
 export function readSessionId(cookies: unknown): string | undefined {

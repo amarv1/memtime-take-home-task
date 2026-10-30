@@ -1,9 +1,12 @@
 import { Router } from 'express'
-import type { CookieOptions } from 'express'
 import { z } from 'zod'
 import { verifyApiKey } from '../memtime/verifyApiKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
-import { SESSION_COOKIE, readSessionId } from '../middleware/requireSession.ts'
+import {
+  SESSION_COOKIE,
+  readSessionId,
+  sessionCookieOptions,
+} from '../middleware/requireSession.ts'
 import type { Session, SessionStore } from './sessionStore.ts'
 
 const bodySchema = z.object({ apiKey: z.string().trim().min(1).max(512) })
@@ -28,13 +31,7 @@ export function sessionRouter({
   secureCookies,
   verify = verifyApiKey,
 }: Options) {
-  // One definition so setting and clearing the cookie always use the same name, path and flags.
-  const cookieOptions: CookieOptions = {
-    httpOnly: true,
-    sameSite: 'strict',
-    path: '/api',
-    secure: secureCookies,
-  }
+  const cookieOptions = sessionCookieOptions(secureCookies)
 
   const router = Router()
 
