@@ -38,7 +38,7 @@ function intParam(
   return number
 }
 
-// Only the shape: the rules (lengths, dates, overlaps...) live in the shared package.
+// Only the shape: the rules (lengths, dates, overlaps...) live in ./rules.
 const entryBody = z.object({
   comment: z.string({ error: 'is required' }),
   start: z.string({ error: 'is required' }),
