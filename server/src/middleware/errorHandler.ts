@@ -24,9 +24,11 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return
   }
 
-  // Raised by express.json() for malformed request bodies.
-  if (isBodyParseError(err)) {
-    res.status(400).json({ error: 'Invalid JSON body' })
+  // Raised by body-parser (express.json()) for bad request bodies: malformed JSON,
+  // too large, unsupported charset... It sets `status` and `expose` for us.
+  const clientError = asClientError(err)
+  if (clientError) {
+    res.status(clientError.status).json({ error: clientError.message })
     return
   }
 
@@ -34,11 +36,19 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' })
 }
 
-function isBodyParseError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'type' in err &&
-    err.type === 'entity.parse.failed'
-  )
+const BODY_ERROR_MESSAGES: Record<string, string> = {
+  'entity.parse.failed': 'Invalid JSON body',
+  'entity.too.large': 'Request body too large',
+}
+
+function asClientError(err: unknown): { status: number; message: string } | undefined {
+  if (typeof err !== 'object' || err === null) return undefined
+  const { status, expose, type, message } = err as Record<string, unknown>
+  if (typeof status !== 'number' || status < 400 || status >= 500 || expose !== true)
+    return undefined
+  const known = typeof type === 'string' ? BODY_ERROR_MESSAGES[type] : undefined
+  return {
+    status,
+    message: known ?? (typeof message === 'string' ? message : 'Bad request'),
+  }
 }
