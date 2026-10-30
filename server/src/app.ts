@@ -10,6 +10,8 @@ import { createCircuitBreaker } from './memtime/circuitBreaker.ts'
 import type { CircuitBreaker } from './memtime/circuitBreaker.ts'
 import { createMemtimeClient } from './memtime/memtimeClient.ts'
 import type { MemtimeClient } from './memtime/memtimeClient.ts'
+import { createRateLimitGate } from './memtime/rateLimitGate.ts'
+import type { RateLimitGate } from './memtime/rateLimitGate.ts'
 import { memtimeRouter } from './memtime/memtimeRouter.ts'
 import { verifyApiKey } from './memtime/verifyApiKey.ts'
 import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
@@ -32,6 +34,8 @@ interface Options {
   sessionStore?: SessionStore
   /** One breaker for every Memtime call; tests inject one to control its clock. */
   breaker?: CircuitBreaker
+  /** One gate for every Memtime call; tests inject one to control its clock. */
+  rateLimitGate?: RateLimitGate
   /** Must use the same breaker as `breaker`, or the readiness check won't see its state. */
   memtimeClient?: MemtimeClient
   timeEntryService?: TimeEntryService
@@ -50,7 +54,12 @@ export function createApp({
     failureThreshold: env.MEMTIME_BREAKER_THRESHOLD,
     openMs: env.MEMTIME_BREAKER_OPEN_MS,
   }),
-  memtimeClient = createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL, breaker }),
+  rateLimitGate = createRateLimitGate(),
+  memtimeClient = createMemtimeClient({
+    memtimeApiUrl: env.MEMTIME_API_URL,
+    breaker,
+    gate: rateLimitGate,
+  }),
   timeEntryService = createTimeEntryService({
     client: memtimeClient,
     // A few users at a time is plenty here; the cap only bounds memory.

@@ -1,17 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import type { RequestHandler } from 'express'
 import { logger } from '../logger.ts'
-import { runWithRequestId } from '../requestId.ts'
+import { runInRequest } from '../requestId.ts'
 
 /**
  * Gives each request a fresh id, returned as `X-Request-Id` and attached to every log
  * line written while handling it. A client-supplied id is ignored on purpose: it would
- * let callers forge or inject log content.
+ * let callers forge or inject log content. Also records whether the request may change data.
  */
-export const requestContext: RequestHandler = (_req, res, next) => {
+export const requestContext: RequestHandler = (req, res, next) => {
   const requestId = randomUUID()
   res.setHeader('X-Request-Id', requestId)
-  runWithRequestId(requestId, next)
+  const writing = req.method !== 'GET' && req.method !== 'HEAD'
+  runInRequest({ requestId, writing }, next)
 }
 
 /** Logs one line per finished request. Health checks are demoted so probes don't flood the log. */

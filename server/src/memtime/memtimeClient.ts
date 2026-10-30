@@ -1,14 +1,19 @@
 import { logger } from '../logger.ts'
+import { isWritingRequest } from '../requestId.ts'
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { CircuitOpenError } from './circuitBreaker.ts'
 import type { CircuitBreaker } from './circuitBreaker.ts'
+import { RateLimitedError } from './rateLimit.ts'
+import type { RateLimitGate } from './rateLimitGate.ts'
 
 interface Options {
   memtimeApiUrl: string
   timeoutMs?: number
   /** Shared by every call, so one outage is noticed once. Without it, calls always go through. */
   breaker?: CircuitBreaker
+  /** Shared by every call, so a key's budget is tracked once. Without it, calls always go through. */
+  gate?: RateLimitGate
   fetch?: typeof globalThis.fetch
 }
 
@@ -26,11 +31,15 @@ export type MemtimeClient = ReturnType<typeof createMemtimeClient>
  * Calls go through the circuit breaker: network failures, timeouts and 5xx count against it,
  * while any other answer (401 and 429 included) shows Memtime is up. While it is open, calls
  * throw `CircuitOpenError` without reaching Memtime.
+ * Outside the breaker sits the rate-limit gate (a GET while serving a GET is a read, the rest are writes): it throws
+ * `RateLimitedError` without a call when the key's budget is used up, so that is no failure for
+ * the breaker.
  */
 export function createMemtimeClient({
   memtimeApiUrl,
   timeoutMs = 10_000,
   breaker,
+  gate,
   fetch,
 }: Options) {
   // String join on purpose: `new URL('/clients', base)` would drop the `/api/v1` prefix.
@@ -66,11 +75,15 @@ export function createMemtimeClient({
       }
     }
 
+    const guarded = () => (breaker ? breaker.run(call, (r) => r.status >= 500) : call())
+    // Reads made while handling a save (its checks) count as writes, so the reserve covers the whole save.
+    const kind = method === 'GET' && !isWritingRequest() ? 'read' : 'write'
+
     let response: MemtimeResponse
     try {
-      response = breaker ? await breaker.run(call, (r) => r.status >= 500) : await call()
+      response = gate ? await gate.run(apiKey, kind, guarded) : await guarded()
     } catch (err) {
-      if (err instanceof CircuitOpenError) throw err
+      if (err instanceof CircuitOpenError || err instanceof RateLimitedError) throw err
       // Log what failed, never the key or the URL: only the error name and its cause's message.
       const reason = err instanceof Error ? err.name : 'unknown error'
       const code =
