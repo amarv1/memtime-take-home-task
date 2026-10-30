@@ -1,9 +1,9 @@
 import cookieParser from 'cookie-parser'
 import express from 'express'
 import request from 'supertest'
-import { createSessionStore } from '../sessions/sessionStore.ts'
-import { errorHandler } from './errorHandler.ts'
-import { getSession, requireSession } from './requireSession.ts'
+import { createSessionStore } from '../../src/sessions/sessionStore.ts'
+import { errorHandler } from '../../src/middleware/errorHandler.ts'
+import { getSession, requireSession } from '../../src/middleware/requireSession.ts'
 
 describe('requireSession', () => {
   let time = 0

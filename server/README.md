@@ -35,8 +35,10 @@ src/
   middleware/     error handling ({ error } responses, like the upstream API), requireSession
   sessions/       in-memory session store and the /api/session routes
   memtime/        calls to the upstream Memtime API (API key check)
-  test/           Vitest setup and the shared MSW server
 ```
+
+Tests live outside `src/`, in `tests/`, which mirrors `src/`. `tests/support/`
+holds the Vitest setup and the shared MSW server.
 
 ## Signing in
 
@@ -68,8 +70,8 @@ POST, PUT and PATCH requests must be `Content-Type: application/json` (415 other
 
 ## Testing
 
-- Tests sit next to the code as `*.test.ts`.
+- Tests live in `tests/`, mirroring `src/`, as `*.test.ts`.
 - Call the app in memory with `request(createApp())` from supertest.
-- Mock the upstream API with `server.use(http.get(...))` from `src/test/server.ts`.
+- Mock the upstream API with `server.use(http.get(...))` from `tests/support/server.ts`.
   Any upstream request without a handler fails the test, so tests never reach
   the real API.

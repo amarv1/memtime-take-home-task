@@ -1,7 +1,7 @@
 import { http, HttpResponse, delay } from 'msw'
-import { server } from '../test/server.ts'
-import { HttpError } from '../middleware/errorHandler.ts'
-import { verifyApiKey } from './verifyApiKey.ts'
+import { server } from '../support/server.ts'
+import { HttpError } from '../../src/middleware/errorHandler.ts'
+import { verifyApiKey } from '../../src/memtime/verifyApiKey.ts'
 
 const BASE = 'https://upstream.test/api/v1'
 const KEY = 'secret-key-123'

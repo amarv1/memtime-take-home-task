@@ -39,7 +39,7 @@ export default defineConfig([
   },
   {
     // Test helpers export functions alongside components.
-    files: ['src/test/**'],
+    files: ['tests/support/**'],
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   {

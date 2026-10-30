@@ -1,8 +1,8 @@
 import request from 'supertest'
 import { http, HttpResponse } from 'msw'
-import { createApp } from './app.ts'
-import { loadEnv } from './env.ts'
-import { server } from './test/server.ts'
+import { createApp } from '../src/app.ts'
+import { loadEnv } from '../src/env.ts'
+import { server } from './support/server.ts'
 
 describe('app', () => {
   const app = createApp()

@@ -1,10 +1,10 @@
 import { screen } from '@testing-library/react'
 import { delay, http, HttpResponse } from 'msw'
 import { Route, Routes } from 'react-router'
-import { mockSession } from '@/test/session'
-import { server } from '@/test/server'
-import { renderWithProviders } from '@/test/utils'
-import { RequireAuth } from './RequireAuth'
+import { mockSession } from '../../support/session'
+import { server } from '../../support/server'
+import { renderWithProviders } from '../../support/utils'
+import { RequireAuth } from '@/features/auth/RequireAuth'
 
 function renderGuarded() {
   return renderWithProviders(

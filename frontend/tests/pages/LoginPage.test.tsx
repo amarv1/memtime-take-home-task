@@ -1,10 +1,10 @@
 import { screen, waitFor } from '@testing-library/react'
 import { delay, http, HttpResponse, type JsonBodyType } from 'msw'
 import { Navigate, Route, Routes, useLocation, type InitialEntry } from 'react-router'
-import { mockSession, testSession } from '@/test/session'
-import { server } from '@/test/server'
-import { renderWithProviders } from '@/test/utils'
-import { LoginPage } from './LoginPage'
+import { mockSession, testSession } from '../support/session'
+import { server } from '../support/server'
+import { renderWithProviders } from '../support/utils'
+import { LoginPage } from '@/pages/LoginPage'
 
 function Where() {
   const location = useLocation()

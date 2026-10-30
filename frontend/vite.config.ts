@@ -26,13 +26,13 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'jsdom',
       globals: true,
-      setupFiles: ['./src/test/setup.ts'],
+      setupFiles: ['./tests/support/setup.ts'],
       css: false,
-      exclude: ['e2e/**', 'node_modules/**'],
+      exclude: ['tests/e2e/**', 'node_modules/**'],
       coverage: {
         provider: 'v8',
         include: ['src/**/*.{ts,tsx}'],
-        exclude: ['src/test/**', 'src/main.tsx', 'src/**/*.test.{ts,tsx}'],
+        exclude: ['src/main.tsx'],
       },
     },
   }

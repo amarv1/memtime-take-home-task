@@ -30,8 +30,10 @@ src/
   features/     feature modules; auth/ holds session api, hooks, RequireAuth
   components/   shared components (AppLayout; ui/ reserved for shadcn)
   lib/          api client, queryClient, utils
-  test/         test setup and helpers
 ```
+
+Tests live outside `src/`, in `tests/`, which mirrors `src/`. `tests/support/`
+holds the test setup and helpers; `tests/e2e/` holds the Playwright tests.
 
 ## Authentication
 

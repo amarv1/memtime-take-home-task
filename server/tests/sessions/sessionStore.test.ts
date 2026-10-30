@@ -1,4 +1,4 @@
-import { SessionLimitError, createSessionStore } from './sessionStore.ts'
+import { SessionLimitError, createSessionStore } from '../../src/sessions/sessionStore.ts'
 
 describe('sessionStore', () => {
   let time = 1_000_000

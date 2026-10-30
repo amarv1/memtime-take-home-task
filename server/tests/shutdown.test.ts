@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
-import { logger } from './logger.ts'
-import { registerGracefulShutdown } from './shutdown.ts'
+import { logger } from '../src/logger.ts'
+import { registerGracefulShutdown } from '../src/shutdown.ts'
 
 function fakeServer(closeError?: Error) {
   let onClose: ((err?: Error) => void) | undefined

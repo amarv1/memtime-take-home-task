@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { RouteError } from './RouteError'
+import { RouteError } from '@/components/RouteError'
 
 function Boom(): never {
   throw new Error('kaboom')

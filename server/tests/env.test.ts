@@ -1,4 +1,4 @@
-import { loadEnv } from './env.ts'
+import { loadEnv } from '../src/env.ts'
 
 describe('loadEnv', () => {
   it('applies defaults', () => {

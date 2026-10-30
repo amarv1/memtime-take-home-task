@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { server } from '@/test/server'
-import { getSession, login, logout } from './api'
+import { server } from '../../support/server'
+import { getSession, login, logout } from '@/features/auth/api'
 
 const session = { expiresAt: '2030-01-01T00:00:00.000Z' }
 

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { server } from '@/test/server'
-import { ApiError, apiFetch } from './api'
+import { server } from '../support/server'
+import { ApiError, apiFetch } from '@/lib/api'
 
 describe('apiFetch', () => {
   it('returns parsed JSON and sends JSON headers with a body', async () => {

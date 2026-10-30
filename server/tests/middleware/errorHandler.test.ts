@@ -1,7 +1,7 @@
 import express from 'express'
 import request from 'supertest'
-import { logger } from '../logger.ts'
-import { HttpError, errorHandler } from './errorHandler.ts'
+import { logger } from '../../src/logger.ts'
+import { HttpError, errorHandler } from '../../src/middleware/errorHandler.ts'
 
 function appThatThrows(error: unknown) {
   const app = express()

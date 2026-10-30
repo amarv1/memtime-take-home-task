@@ -1,7 +1,7 @@
 import { toast } from 'sonner'
 import { sessionQueryKey } from '@/features/auth/hooks'
-import { ApiError } from './api'
-import { createQueryClient, queryClient } from './queryClient'
+import { ApiError } from '@/lib/api'
+import { createQueryClient, queryClient } from '@/lib/queryClient'
 
 vi.mock('sonner', () => ({ toast: { info: vi.fn() } }))
 

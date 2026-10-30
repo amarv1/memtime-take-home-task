@@ -1,14 +1,14 @@
 import cookieParser from 'cookie-parser'
 import express from 'express'
 import request from 'supertest'
-import { logger } from '../logger.ts'
-import { createSessionStore } from '../sessions/sessionStore.ts'
+import { logger } from '../../src/logger.ts'
+import { createSessionStore } from '../../src/sessions/sessionStore.ts'
 import {
   MemtimeKeyRejectedError,
   endSessionOnRevokedKey,
-} from './endSessionOnRevokedKey.ts'
-import { errorHandler } from './errorHandler.ts'
-import { requireSession } from './requireSession.ts'
+} from '../../src/middleware/endSessionOnRevokedKey.ts'
+import { errorHandler } from '../../src/middleware/errorHandler.ts'
+import { requireSession } from '../../src/middleware/requireSession.ts'
 
 describe('endSessionOnRevokedKey', () => {
   const store = createSessionStore({ ttlMs: 60_000 })

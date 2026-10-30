@@ -1,10 +1,10 @@
 import { screen } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { Route, Routes } from 'react-router'
-import { server } from '@/test/server'
-import { renderWithProviders } from '@/test/utils'
-import { testSession } from '@/test/session'
-import { AppLayout } from './AppLayout'
+import { server } from '../support/server'
+import { renderWithProviders } from '../support/utils'
+import { testSession } from '../support/session'
+import { AppLayout } from '@/components/AppLayout'
 
 describe('AppLayout', () => {
   it('signs out and lands on the login page', async () => {
