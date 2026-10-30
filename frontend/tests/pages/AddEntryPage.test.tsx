@@ -318,15 +318,9 @@ describe('AddEntryPage', () => {
   it.each([
     [404, "This task doesn't exist any more."],
     [400, 'Bad dates'],
-    [429, 'Slow down'],
     [502, "Couldn't save the time entry. Please try again."],
   ])('explains a %i answer and keeps the input', async (status, message) => {
-    mockCreate(() =>
-      HttpResponse.json(
-        { error: status === 429 ? 'Slow down' : 'Bad dates' },
-        { status },
-      ),
-    )
+    mockCreate(() => HttpResponse.json({ error: 'Bad dates' }, { status }))
     const { user } = renderAt('/tasks/398/entries/new')
 
     await user.type(field('Comment'), 'Work')

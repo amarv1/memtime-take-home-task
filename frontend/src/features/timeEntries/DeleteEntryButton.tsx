@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api'
-import { withWait } from '@/lib/rateLimit'
+import { useAutoResend, withWait } from '@/lib/rateLimit'
 import type { TimeEntry } from './api'
 import { useDeleteEntry } from './hooks'
 
@@ -22,7 +22,15 @@ export function DeleteEntryButton({ entry }: { entry: TimeEntry }) {
   const [open, setOpen] = useState(false)
   const remove = useDeleteEntry(entry.taskId)
 
+  const { waiting, secondsLeft, startOver } = useAutoResend(remove.error, send)
+  const busy = remove.isPending || waiting
+
   function confirm() {
+    startOver()
+    send()
+  }
+
+  function send() {
     remove.mutate(entry.id, {
       onSuccess: () => {
         setOpen(false)
@@ -60,7 +68,18 @@ export function DeleteEntryButton({ entry }: { entry: TimeEntry }) {
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        {remove.isError && (
+        {waiting && (
+          <div
+            role="status"
+            className="rounded-lg bg-muted p-3 text-sm text-muted-foreground"
+          >
+            {/* Read out once; the visible countdown changes every second. */}
+            <span className="sr-only">Memtime is busy. Deleting as soon as it can.</span>
+            <span aria-hidden>Memtime is busy, deleting in {secondsLeft}s…</span>
+          </div>
+        )}
+
+        {remove.isError && !waiting && (
           <div
             role="alert"
             className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
@@ -76,8 +95,8 @@ export function DeleteEntryButton({ entry }: { entry: TimeEntry }) {
               Cancel
             </Button>
           </AlertDialogPrimitive.Cancel>
-          <Button variant="destructive" onClick={confirm} disabled={remove.isPending}>
-            {remove.isPending ? (
+          <Button variant="destructive" onClick={confirm} disabled={busy}>
+            {busy ? (
               <>
                 <Loader2 className="animate-spin" aria-hidden />
                 Deleting…

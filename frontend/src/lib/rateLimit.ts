@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { ApiError } from './api'
 
 export const RATE_LIMITED_MESSAGE = 'Memtime is receiving too many requests.'
@@ -44,6 +44,35 @@ export function useCountdown(error: unknown): number {
   }, [error])
 
   return secondsLeft
+}
+
+const MAX_RESENDS = 2
+
+/**
+ * Resends a request that got a 429 once its wait is over, up to twice. A 429 means nothing reached
+ * Memtime, so resending is safe. `waiting` is true during the wait; clearing `error` (the mutation's
+ * `reset`) or unmounting cancels the resend. Call `startOver` when the user sends something new.
+ * `secondsLeft` is the countdown of `error` (also used for 503 and for a 429 that ran out of resends).
+ */
+export function useAutoResend(error: unknown, resend: () => void) {
+  const [resends, setResends] = useState(0)
+  const secondsLeft = useCountdown(error)
+  const waiting = isRateLimited(error) && resends < MAX_RESENDS
+  const send = useEffectEvent(resend)
+
+  useEffect(() => {
+    if (!waiting) return
+    const timer = setTimeout(
+      () => {
+        setResends((n) => n + 1)
+        send()
+      },
+      waitSeconds(error) * 1000,
+    )
+    return () => clearTimeout(timer)
+  }, [waiting, error])
+
+  return { waiting, secondsLeft, startOver: () => setResends(0) }
 }
 
 /** The server's message, plus how long to wait. Fixed text, so "about": it doesn't count down. */

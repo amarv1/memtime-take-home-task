@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
-import { isUnavailable, useCountdown, withWait } from '@/lib/rateLimit'
+import { isUnavailable, useAutoResend, withWait } from '@/lib/rateLimit'
 import type { NewEntry, TimeEntry } from './api'
 import {
   buildSchema,
@@ -64,8 +64,12 @@ export function EntryForm({
   const lastDraft = useRef<NewEntry | null>(null)
 
   const error = create.error instanceof ApiError ? create.error : undefined
-  // While Memtime is down, saving waits for the time the server named.
-  const secondsLeft = useCountdown(create.error)
+  // After a 429 the save is resent on its own; while Memtime is down, saving waits for the time the server named.
+  const { waiting, secondsLeft, startOver } = useAutoResend(create.error, () => {
+    if (create.variables) create.mutate(create.variables, { onSuccess: onSaved })
+  })
+  // The form stays locked while waiting, so the resent request matches what's on screen.
+  const busy = create.isPending || waiting
   const warnings = error?.status === 409 ? (error.warnings ?? []) : []
   // A 400 the server pinned to a field shows under that field, not in the alert.
   const serverField =
@@ -89,6 +93,7 @@ export function EntryForm({
       return
     }
     lastDraft.current = draft
+    startOver()
     send(draft, confirmed)
   }
 
@@ -96,6 +101,7 @@ export function EntryForm({
     if (!lastDraft.current) return
     const accepted = [...new Set([...confirmed, ...warnings.map((w) => w.code)])]
     setConfirmed(accepted)
+    startOver()
     send(lastDraft.current, accepted)
   }
 
@@ -132,6 +138,7 @@ export function EntryForm({
           placeholder="What did you work on?"
           aria-invalid={fieldError('comment') ? true : undefined}
           aria-describedby={fieldError('comment') ? 'comment-error' : undefined}
+          readOnly={busy}
           {...register('comment', fieldProps)}
         />
       </Field>
@@ -143,6 +150,7 @@ export function EntryForm({
             type="datetime-local"
             aria-invalid={fieldError('start') ? true : undefined}
             aria-describedby={fieldError('start') ? 'start-error' : undefined}
+            readOnly={busy}
             {...register('start', fieldProps)}
           />
         </Field>
@@ -152,6 +160,7 @@ export function EntryForm({
             type="datetime-local"
             aria-invalid={fieldError('end') ? true : undefined}
             aria-describedby={fieldError('end') ? 'end-error' : undefined}
+            readOnly={busy}
             {...register('end', fieldProps)}
           />
         </Field>
@@ -160,13 +169,27 @@ export function EntryForm({
       {warnings.length > 0 && (
         <WarningPanel
           warnings={warnings}
-          disabled={create.isPending}
+          disabled={busy}
           onConfirm={saveAnyway}
           onKeepEditing={resetConfirmation}
         />
       )}
 
-      {create.isError && warnings.length === 0 && !serverField && (
+      {waiting && (
+        <div
+          role="status"
+          className="flex items-center gap-3 rounded-lg bg-muted p-3 text-sm text-muted-foreground"
+        >
+          {/* Read out once; the visible countdown changes every second. */}
+          <span className="sr-only">Memtime is busy. Saving as soon as it can.</span>
+          <span aria-hidden>Memtime is busy, saving in {secondsLeft}s…</span>
+          <Button type="button" variant="outline" size="xs" onClick={create.reset}>
+            Cancel saving
+          </Button>
+        </div>
+      )}
+
+      {create.isError && !waiting && warnings.length === 0 && !serverField && (
         <div
           role="alert"
           className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
@@ -177,8 +200,8 @@ export function EntryForm({
       )}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={create.isPending || secondsLeft > 0}>
-          {create.isPending ? (
+        <Button type="submit" disabled={busy || secondsLeft > 0}>
+          {busy ? (
             <>
               <Loader2 className="animate-spin" aria-hidden />
               Saving…
