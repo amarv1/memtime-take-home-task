@@ -1,6 +1,7 @@
 import { hashApiKey } from '../cache/hashApiKey.ts'
 import type { Cache } from '../cache/memoryCache.ts'
 import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
+import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 
 export interface TimeEntry {
@@ -112,6 +113,25 @@ export function createTimeEntryService({ client, cache }: Options) {
     await cache.delete(key)
   }
 
+  /**
+   * Runs a write call. If its outcome is unknown (an error other than a rejected key, or a 5xx),
+   * Memtime may still have applied it, so the cached list is dropped.
+   */
+  async function write(
+    apiKey: string,
+    call: () => Promise<MemtimeResponse>,
+  ): Promise<MemtimeResponse> {
+    let response: MemtimeResponse
+    try {
+      response = await call()
+    } catch (err) {
+      if (!(err instanceof MemtimeKeyRejectedError)) await invalidate(apiKey)
+      throw err
+    }
+    if (response.status >= 500) await invalidate(apiKey)
+    return response
+  }
+
   async function saved(
     apiKey: string,
     { status, headers, body }: MemtimeResponse,
@@ -167,34 +187,35 @@ export function createTimeEntryService({ client, cache }: Options) {
       return promise
     },
 
-    /** Creates an entry for the key's owner, then drops the cached list so the next read has it. */
+    /** Creates an entry for the key's owner, then drops the cached list (also when the outcome is unknown). */
     async createEntry(apiKey: string, entry: NewEntry): Promise<TimeEntry> {
-      const response = await client.post(
-        apiKey,
-        '/time-entries',
-        entry,
-        '/api/tasks/:taskId/entries',
+      const response = await write(apiKey, () =>
+        client.post(apiKey, '/time-entries', entry, '/api/tasks/:taskId/entries'),
       )
       return saved(apiKey, response, 'Task not found')
     },
 
-    /** Replaces an entry of the key's owner, then drops the cached list. */
+    /** Replaces an entry of the key's owner, then drops the cached list (also when the outcome is unknown). */
     async updateEntry(apiKey: string, id: number, entry: NewEntry): Promise<TimeEntry> {
-      const response = await client.put(
-        apiKey,
-        `/time-entries/${id}`,
-        entry,
-        '/api/tasks/:taskId/entries/:entryId',
+      const response = await write(apiKey, () =>
+        client.put(
+          apiKey,
+          `/time-entries/${id}`,
+          entry,
+          '/api/tasks/:taskId/entries/:entryId',
+        ),
       )
       return saved(apiKey, response, 'Time entry not found')
     },
 
-    /** Deletes an entry of the key's owner, then drops the cached list. */
+    /** Deletes an entry of the key's owner, then drops the cached list (also when the outcome is unknown). */
     async deleteEntry(apiKey: string, id: number): Promise<void> {
-      const { status, headers } = await client.delete(
-        apiKey,
-        `/time-entries/${id}`,
-        '/api/tasks/:taskId/entries/:entryId',
+      const { status, headers } = await write(apiKey, () =>
+        client.delete(
+          apiKey,
+          `/time-entries/${id}`,
+          '/api/tasks/:taskId/entries/:entryId',
+        ),
       )
 
       throwIfRateLimited(status, headers)

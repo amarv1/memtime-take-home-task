@@ -311,4 +311,113 @@ describe('timeEntryService', () => {
       await expect(s.getAllEntries(KEY)).resolves.toHaveLength(2)
     })
   })
+
+  describe('writes with an unknown outcome', () => {
+    const newEntry = { taskId: 5, comment: 'x', start: 'a', end: 'b' }
+    type Write = (s: ReturnType<typeof service>) => Promise<unknown>
+    const writes: Record<
+      string,
+      { method: 'post' | 'put' | 'delete'; url: string; run: Write }
+    > = {
+      create: {
+        method: 'post',
+        url: `${BASE}/time-entries`,
+        run: (s) => s.createEntry(KEY, newEntry),
+      },
+      update: {
+        method: 'put',
+        url: `${BASE}/time-entries/7`,
+        run: (s) => s.updateEntry(KEY, 7, newEntry),
+      },
+      delete: {
+        method: 'delete',
+        url: `${BASE}/time-entries/7`,
+        run: (s) => s.deleteEntry(KEY, 7),
+      },
+    }
+
+    // Loads and caches the list, then makes the write answer with `answer`.
+    async function writeAfterCaching(name: string, answer: () => Response) {
+      mockEntries(many(3))
+      const s = service()
+      await s.getAllEntries(KEY)
+      const { method, url, run } = writes[name]!
+      server.use(http[method](url, answer))
+      const error = await run(s).catch((e: unknown) => e)
+      return { s, error }
+    }
+
+    beforeEach(() => {
+      vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      vi.spyOn(logger, 'warn').mockImplementation(vi.fn())
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('loads again after a network error on create', async () => {
+      const { s, error } = await writeAfterCaching('create', () => HttpResponse.error())
+
+      expect(error).toMatchObject({
+        status: 502,
+        message: "Couldn't reach Memtime. Please try again.",
+      })
+      await s.getAllEntries(KEY)
+      expect(calls).toHaveLength(2)
+    })
+
+    it.each(['create', 'update', 'delete'])(
+      'loads again after a 500 on %s',
+      async (name) => {
+        const { s, error } = await writeAfterCaching(name, () =>
+          HttpResponse.json({ error: 'x' }, { status: 500 }),
+        )
+
+        expect(error).toMatchObject({ status: 502 })
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(2)
+      },
+    )
+
+    it.each(['create', 'update', 'delete'])(
+      'keeps the cache after a 429 on %s',
+      async (name) => {
+        const { s, error } = await writeAfterCaching(name, () =>
+          HttpResponse.json({}, { status: 429 }),
+        )
+
+        expect(error).toMatchObject({ status: 429 })
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(1)
+      },
+    )
+
+    it.each(['create', 'update', 'delete'])(
+      'keeps the cache after a 404 on %s',
+      async (name) => {
+        const { s, error } = await writeAfterCaching(name, () =>
+          HttpResponse.json({ error: 'x' }, { status: 404 }),
+        )
+
+        expect(error).toMatchObject({ status: 404 })
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(1)
+      },
+    )
+
+    it.each(['create', 'update', 'delete'])(
+      'keeps the cache after a 401 on %s',
+      async (name) => {
+        const { s, error } = await writeAfterCaching(
+          name,
+          () => new HttpResponse('no', { status: 401 }),
+        )
+
+        expect(error).toBeInstanceOf(MemtimeKeyRejectedError)
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(1)
+      },
+    )
+  })
 })
