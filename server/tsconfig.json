@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node", "vitest/globals"],
+    "skipLibCheck": true,
+
+    /* Node ESM: write imports with .ts, emitted as .js */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src", "vitest.config.ts", "eslint.config.js"]
+}
