@@ -16,6 +16,7 @@ describe('loadEnv', () => {
       SIGN_IN_RATE_LIMIT: 10,
       MAX_SESSIONS: 1000,
       MAX_SESSIONS_PER_KEY: 5,
+      TRUST_PROXY: false,
       COOKIE_SECURE: true,
     })
   })
@@ -28,6 +29,19 @@ describe('loadEnv', () => {
     expect(loadEnv({ NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true)
     expect(loadEnv({ COOKIE_SECURE: 'false' }).COOKIE_SECURE).toBe(false)
     expect(() => loadEnv({ COOKIE_SECURE: '0' })).toThrow(/COOKIE_SECURE/)
+  })
+
+  it('parses TRUST_PROXY', () => {
+    expect(loadEnv({ TRUST_PROXY: 'true' }).TRUST_PROXY).toBe(true)
+    expect(loadEnv({ TRUST_PROXY: 'false' }).TRUST_PROXY).toBe(false)
+    expect(loadEnv({ TRUST_PROXY: '1' }).TRUST_PROXY).toBe(1)
+    expect(loadEnv({ TRUST_PROXY: '0' }).TRUST_PROXY).toBe(0)
+    expect(loadEnv({ TRUST_PROXY: 'loopback, 10.0.0.0/8' }).TRUST_PROXY).toEqual([
+      'loopback',
+      '10.0.0.0/8',
+    ])
+    expect(() => loadEnv({ TRUST_PROXY: '-1' })).toThrow(/TRUST_PROXY/)
+    expect(() => loadEnv({ TRUST_PROXY: 'loopback,' })).toThrow(/TRUST_PROXY/)
   })
 
   it('throws a readable error for invalid values', () => {

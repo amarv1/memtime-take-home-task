@@ -70,8 +70,12 @@ describe('app', () => {
   describe('sign-in rate limit', () => {
     const UPSTREAM = 'https://upstream.test/api/v1'
 
-    function limitedApp() {
-      const env = loadEnv({ MEMTIME_API_URL: UPSTREAM, SIGN_IN_RATE_LIMIT: '2' })
+    function limitedApp(extra: NodeJS.ProcessEnv = {}) {
+      const env = loadEnv({
+        MEMTIME_API_URL: UPSTREAM,
+        SIGN_IN_RATE_LIMIT: '2',
+        ...extra,
+      })
       server.use(
         http.get(`${UPSTREAM}/clients`, () => new HttpResponse('nope', { status: 401 })),
       )
@@ -90,6 +94,42 @@ describe('app', () => {
 
       expect(res.status).toBe(429)
       expect(res.body).toEqual({ error: 'Too many sign-in attempts. Try again later.' })
+    })
+
+    it('keeps a separate limit per client behind a trusted proxy', async () => {
+      const a = limitedApp({ TRUST_PROXY: '1' })
+      const from = (ip: string) => attempt(a).set('X-Forwarded-For', ip)
+      await from('1.1.1.1').expect(401)
+      await from('1.1.1.1').expect(401)
+      await from('1.1.1.1').expect(429)
+
+      await from('2.2.2.2').expect(401)
+    })
+
+    it('shares one limit without a trusted proxy', async () => {
+      const a = limitedApp()
+      await attempt(a).set('X-Forwarded-For', '1.1.1.1').expect(401)
+      await attempt(a).set('X-Forwarded-For', '2.2.2.2').expect(401)
+
+      await attempt(a).set('X-Forwarded-For', '3.3.3.3').expect(429)
+    })
+
+    it('does not count successful sign-ins', async () => {
+      const a = limitedApp()
+      server.use(
+        http.get(`${UPSTREAM}/clients`, ({ request }) =>
+          request.headers.get('authorization')?.includes('good')
+            ? new HttpResponse('[]', { status: 200 })
+            : new HttpResponse('nope', { status: 401 }),
+        ),
+      )
+      const good = () => request(a).post('/api/session').send({ apiKey: 'good' })
+
+      for (let i = 0; i < 5; i++) await good().expect(200)
+      await attempt(a).expect(401)
+      await attempt(a).expect(401)
+      await attempt(a).expect(429)
+      await good().expect(429)
     })
   })
 })
