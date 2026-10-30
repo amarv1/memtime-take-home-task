@@ -2,12 +2,13 @@
 
 Express 5 + TypeScript server that sits between the frontend and the Memtime API.
 The frontend dev server proxies `/api` here (port 3000 by default).
+Design decisions are recorded in [docs/adr](../docs/adr/README.md).
 
 ## Getting started
 
 ```bash
 pnpm install
-cp .env.example .env   # optional; every variable has a default
+cp .env.example .env   # optional; every variable has a default (see the comments there)
 pnpm dev
 ```
 
@@ -31,54 +32,11 @@ src/
   app.ts          createApp(): routes and middleware, no listen (used by tests)
   index.ts        entry point: loads env, starts listening
   env.ts          environment variables, validated with zod
-  logger.ts       shared winston logger (console transport)
-  requestId.ts    per-request id, so every log line can carry it
-  middleware/     error handling ({ error } responses, like the upstream API), requireSession
-  sessions/       in-memory session store and the /api/session routes
-  memtime/        calls to the upstream Memtime API (API key check)
+  logger.ts       shared winston logger
+  middleware/     error handling, sessions, request ids
+  sessions/       session store and the /api/session routes
+  memtime/        calls to the upstream Memtime API
 ```
-
-Tests live outside `src/`, in `tests/`, which mirrors `src/`. `tests/support/`
-holds the Vitest setup and the shared MSW server.
-
-## Signing in
-
-Users sign in with their Memtime API key. The server checks it with one upstream
-call (`GET /clients?limit=1`), then keeps it in an in-memory session and gives the
-browser an HttpOnly cookie (`memtime_sid`, SameSite=Strict, Path=/api, `Secure` unless
-`COOKIE_SECURE=false`). The key is never sent back to the browser. See
-[ADR 0003](../docs/adr/0003-in-memory-sessions-bound-to-api-key.md).
-
-| Route                 | Result                                                                                                                                        |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /api/session`   | Body `{ apiKey }`. 200 `{ expiresAt }` + cookie; 400 bad body; 401 key rejected; 429 upstream rate limit; 502 upstream unreachable or failing |
-| `GET /api/session`    | 200 `{ expiresAt }` if signed in, otherwise 401 `Not signed in`                                                                               |
-| `DELETE /api/session` | Always 204; ends the session and clears the cookie                                                                                            |
-
-Later routes use `requireSession(store)`, which puts the session on `res.locals.session`
-(read it with `getSession(res)`) or answers 401.
-
-| Variable               | Default   | Meaning                                                                          |
-| ---------------------- | --------- | -------------------------------------------------------------------------------- |
-| `LOG_LEVEL`            | `info`    | Winston log level (`error`, `warn`, `info`, `http`, `verbose`, `debug`, `silly`) |
-| `SESSION_TTL_MS`       | `3600000` | How long a sign-in lasts (absolute, not extended)                                |
-| `SIGN_IN_RATE_LIMIT`   | `10`      | Sign-in attempts per IP per 15 minutes (429 beyond)                              |
-| `MAX_SESSIONS`         | `1000`    | Most sessions at once (sign-in answers 503 when full)                            |
-| `MAX_SESSIONS_PER_KEY` | `5`       | Most sessions per API key (the oldest is dropped)                                |
-| `COOKIE_SECURE`        | `true`    | `Secure` flag on the session cookie; `false` only for local http                 |
-
-POST, PUT and PATCH requests must be `Content-Type: application/json` (415 otherwise).
-
-## Logging and errors
-
-Every response has an `X-Request-Id` header (generated per request; a client-supplied
-one is ignored). Each request logs one line (`METHOD /path status Nms`, no query
-string) and every line written while handling it, including upstream failures from
-the API key check, is tagged `[<request id>]`. 5xx lines log at `error`; `/api/health`
-logs at `debug`. To trace a user's report, ask for the `X-Request-Id` of the failed call.
-
-Errors are returned as `{ error }`. Body-parser errors keep their status (400 bad JSON,
-413 body over 100 kB, ...).
 
 ## Testing
 
