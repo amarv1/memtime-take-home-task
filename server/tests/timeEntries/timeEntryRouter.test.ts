@@ -252,7 +252,13 @@ describe('POST /api/tasks/:taskId/entries', () => {
         return (
           respond?.() ??
           HttpResponse.json(
-            { id: 77, userId: 1, ...(posted[0] as object) },
+            {
+              id: 77,
+              userId: 1,
+              createdAt: '2025-01-03T08:00:00.000Z',
+              updatedAt: '2025-01-03T08:00:00.000Z',
+              ...(posted[0] as object),
+            },
             { status: 201 },
           )
         )
@@ -312,14 +318,15 @@ describe('POST /api/tasks/:taskId/entries', () => {
     expect(posted).toMatchObject([{ start: start.toISOString(), end: end.toISOString() }])
   })
 
-  it('makes the next read load fresh entries', async () => {
+  it('shows the new entry on the next read without loading the list again', async () => {
     mockUpstream()
     await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
     await create(valid)
-    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+    const res = await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
-    expect(listCalls).toBe(2)
+    expect(json(res).items.map((e) => e.id)).toEqual([77])
+    expect(listCalls).toBe(1)
   })
 
   it.each([
@@ -696,14 +703,15 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
       ])
     })
 
-    it('makes the next read load fresh entries', async () => {
+    it('shows the change on the next read without loading the list again', async () => {
       mockUpstream()
       await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
       await request(app).put('/api/tasks/5/entries/1').set('Cookie', cookie()).send(valid)
-      await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+      const res = await request(app).get('/api/tasks/5/entries/1').set('Cookie', cookie())
 
-      expect(listCalls).toBe(2)
+      expect(res.body).toMatchObject({ comment: valid.comment })
+      expect(listCalls).toBe(1)
     })
 
     it('updates the entry with id 0', async () => {
@@ -921,14 +929,15 @@ describe('DELETE /api/tasks/:taskId/entries/:entryId', () => {
     expect(deleted).toEqual([{ id, auth: `Bearer ${KEY}` }])
   })
 
-  it('makes the next read load fresh entries', async () => {
+  it('drops the entry from the next read without loading the list again', async () => {
     mockUpstream()
     await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
     await request(app).delete('/api/tasks/5/entries/1').set('Cookie', cookie())
-    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+    const res = await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
-    expect(listCalls).toBe(2)
+    expect(json(res).items.map((e) => e.id)).toEqual([0])
+    expect(listCalls).toBe(1)
   })
 
   it.each(['/api/tasks/5/entries/2', '/api/tasks/5/entries/99'])(

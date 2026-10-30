@@ -19,9 +19,18 @@ export function buildEntry(
   }
 }
 
-/** Slices like the real API: a bare array. */
+/** Sorts (`sortBy`, `order`) and slices like the real API: a bare array. */
 export function page(entries: TimeEntry[], url: URL) {
   const limit = Number(url.searchParams.get('limit') ?? 10)
   const offset = Number(url.searchParams.get('offset') ?? 0)
-  return entries.slice(offset, offset + limit)
+  const sortBy = url.searchParams.get('sortBy') as keyof TimeEntry | null
+  const sign = url.searchParams.get('order') === 'desc' ? -1 : 1
+  const sorted = sortBy
+    ? [...entries].sort((a, b) => {
+        const x = a[sortBy]
+        const y = b[sortBy]
+        return sign * (x < y ? -1 : x > y ? 1 : 0)
+      })
+    : entries
+  return sorted.slice(offset, offset + limit)
 }

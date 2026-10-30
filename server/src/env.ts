@@ -9,6 +9,7 @@ const envSchema = z.object({
   MEMTIME_API_URL: z.url().default('https://interview-api.memtime-demo.deno.net/api/v1'),
   SESSION_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
   TIME_ENTRIES_CACHE_TTL_MS: z.coerce.number().int().positive().default(300_000),
+  TIME_ENTRIES_KEEP_MS: z.coerce.number().int().positive().default(3_600_000),
   MEMTIME_BREAKER_THRESHOLD: z.coerce.number().int().positive().default(5),
   MEMTIME_BREAKER_OPEN_MS: z.coerce.number().int().positive().default(30_000),
   SIGN_IN_RATE_LIMIT: z.coerce.number().int().positive().default(10),
