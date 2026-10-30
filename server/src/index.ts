@@ -1,9 +1,11 @@
 import { createApp } from './app.ts'
 import { loadEnv } from './env.ts'
+import { logger } from './logger.ts'
 import { createSessionStore } from './sessions/sessionStore.ts'
 import { registerGracefulShutdown } from './shutdown.ts'
 
 const env = loadEnv()
+logger.level = env.LOG_LEVEL
 const sessionStore = createSessionStore({
   ttlMs: env.SESSION_TTL_MS,
   maxSessions: env.MAX_SESSIONS,
@@ -11,7 +13,7 @@ const sessionStore = createSessionStore({
 })
 
 const server = createApp({ env, sessionStore }).listen(env.PORT, () => {
-  console.info(`Server listening on http://localhost:${env.PORT}`)
+  logger.info(`Server listening on http://localhost:${env.PORT}`)
 })
 
 registerGracefulShutdown(server)

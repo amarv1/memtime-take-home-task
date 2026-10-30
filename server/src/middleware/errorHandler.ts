@@ -1,4 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express'
+import { logger } from '../logger.ts'
 
 /** An error with an HTTP status whose message is safe to show to the client. */
 export class HttpError extends Error {
@@ -29,7 +30,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return
   }
 
-  console.error(err)
+  logger.error(err)
   res.status(500).json({ error: 'Internal server error' })
 }
 

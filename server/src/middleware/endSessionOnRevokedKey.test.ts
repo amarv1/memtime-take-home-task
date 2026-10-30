@@ -1,6 +1,7 @@
 import cookieParser from 'cookie-parser'
 import express from 'express'
 import request from 'supertest'
+import { logger } from '../logger.ts'
 import { createSessionStore } from '../sessions/sessionStore.ts'
 import {
   MemtimeKeyRejectedError,
@@ -40,7 +41,7 @@ describe('endSessionOnRevokedKey', () => {
 
   it('leaves other errors alone', async () => {
     const { id } = store.create('key')
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.spyOn(logger, 'error').mockImplementation(vi.fn())
 
     const res = await request(app).get('/broken').set('Cookie', `memtime_sid=${id}`)
 

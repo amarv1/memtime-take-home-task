@@ -1,5 +1,6 @@
 import express from 'express'
 import request from 'supertest'
+import { logger } from '../logger.ts'
 import { HttpError, errorHandler } from './errorHandler.ts'
 
 function appThatThrows(error: unknown) {
@@ -31,7 +32,7 @@ describe('errorHandler', () => {
   })
 
   it('hides details of unexpected errors', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const consoleError = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
 
     const res = await request(appThatThrows(new Error('db password is hunter2'))).post(
       '/test',

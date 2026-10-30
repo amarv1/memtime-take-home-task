@@ -2,6 +2,9 @@ import { z } from 'zod'
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  LOG_LEVEL: z
+    .enum(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly'])
+    .default('info'),
   PORT: z.coerce.number().int().positive().default(3000),
   MEMTIME_API_URL: z.url().default('https://interview-api.memtime-demo.deno.net/api/v1'),
   SESSION_TTL_MS: z.coerce.number().int().positive().default(3_600_000),

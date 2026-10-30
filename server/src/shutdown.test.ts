@@ -1,4 +1,5 @@
 import type { Server } from 'node:http'
+import { logger } from './logger.ts'
 import { registerGracefulShutdown } from './shutdown.ts'
 
 function fakeServer(closeError?: Error) {
@@ -20,8 +21,8 @@ function fakeServer(closeError?: Error) {
 describe('registerGracefulShutdown', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    vi.spyOn(console, 'info').mockImplementation(vi.fn())
-    vi.spyOn(console, 'error').mockImplementation(vi.fn())
+    vi.spyOn(logger, 'info').mockImplementation(vi.fn())
+    vi.spyOn(logger, 'error').mockImplementation(vi.fn())
   })
 
   afterEach(() => {

@@ -2,6 +2,7 @@ import { http, HttpResponse } from 'msw'
 import request from 'supertest'
 import { createApp } from '../app.ts'
 import { loadEnv } from '../env.ts'
+import { logger } from '../logger.ts'
 import { server } from '../test/server.ts'
 import { createSessionStore } from './sessionStore.ts'
 
@@ -185,7 +186,7 @@ describe('session routes', () => {
 
     it('returns 502 for upstream errors and network failures', async () => {
       const { app } = setup()
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const consoleError = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
       const expected = { error: "Couldn't reach Memtime. Please try again." }
 
       upstream(500)
@@ -202,9 +203,9 @@ describe('session routes', () => {
 
     it('never logs the key', async () => {
       const { app } = setup()
-      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-      const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-      const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+      const consoleError = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      const consoleInfo = vi.spyOn(logger, 'info').mockImplementation(vi.fn())
+      const consoleLog = vi.spyOn(logger, 'log').mockImplementation(vi.fn())
       server.use(http.get(`${UPSTREAM}/clients`, () => HttpResponse.error()))
 
       await request(app).post('/api/session').send({ apiKey: KEY })

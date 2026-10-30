@@ -1,4 +1,5 @@
 import type { Server } from 'node:http'
+import { logger } from './logger.ts'
 
 const DEFAULT_TIMEOUT_MS = 10_000
 
@@ -19,10 +20,10 @@ export function registerGracefulShutdown(
   function shutdown(signal: string) {
     if (shuttingDown) return
     shuttingDown = true
-    console.info(`${signal} received, shutting down`)
+    logger.info(`${signal} received, shutting down`)
 
     const timer = setTimeout(() => {
-      console.error(`Shutdown timed out after ${timeoutMs}ms, forcing exit`)
+      logger.error(`Shutdown timed out after ${timeoutMs}ms, forcing exit`)
       server.closeAllConnections()
       exit(1)
     }, timeoutMs)
