@@ -5,6 +5,9 @@ import request from 'supertest'
 import { createApp } from '../../src/app.ts'
 import { loadEnv } from '../../src/env.ts'
 import { logger } from '../../src/logger.ts'
+import { createMemoryCache } from '../../src/cache/memoryCache.ts'
+import { createHierarchyCache } from '../../src/hierarchy/hierarchyCache.ts'
+import type { HierarchyItem } from '../../src/hierarchy/hierarchyCache.ts'
 import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
 import { memtimeRouter } from '../../src/memtime/memtimeRouter.ts'
 import { endSessionOnRevokedKey } from '../../src/middleware/endSessionOnRevokedKey.ts'
@@ -65,7 +68,9 @@ describe('memtimeRouter', () => {
     return seen
   }
 
-  describe.each(routes)('GET $path', ({ path, upstream }) => {
+  describe.each(routes)('GET $path', ({ name, path, upstream }) => {
+    const isLookup = name === 'project' || name === 'task'
+
     it.each([
       ['no cookie', undefined],
       ['an unknown session', 'memtime_sid=nope'],
@@ -101,7 +106,10 @@ describe('memtimeRouter', () => {
         .set('Cookie', cookie())
         .expect(200)
 
-      expect(seen[0]?.url.search).toBe('?limit=100&offset=200&sortBy=name&order=desc')
+      // A lookup by id takes no query; the list routes forward it.
+      expect(seen[0]?.url.search).toBe(
+        isLookup ? '' : '?limit=100&offset=200&sortBy=name&order=desc',
+      )
     })
 
     it('drops unknown and repeated params', async () => {
@@ -112,7 +120,7 @@ describe('memtimeRouter', () => {
         .set('Cookie', cookie())
         .expect(200)
 
-      expect(seen[0]?.url.search).toBe('?offset=5')
+      expect(seen[0]?.url.search).toBe(isLookup ? '' : '?offset=5')
     })
 
     it('passes the status, body and content type through, and forbids caching', async () => {
@@ -215,6 +223,44 @@ describe('memtimeRouter', () => {
     })
   })
 
+  describe('caching', () => {
+    it('answers a repeated list request with one upstream call', async () => {
+      const seen = mockUpstream(() => HttpResponse.json([{ id: 1, name: 'A' }]))
+
+      const first = await request(app)
+        .get('/api/clients?limit=100&offset=0')
+        .set('Cookie', cookie())
+      const second = await request(app)
+        .get('/api/clients?offset=0&limit=100')
+        .set('Cookie', cookie())
+
+      expect(seen).toHaveLength(1)
+      expect(second.status).toBe(200)
+      expect(second.body).toEqual(first.body)
+    })
+
+    it('answers a task after its project task list with no upstream call', async () => {
+      const seen = mockUpstream(() => HttpResponse.json([{ id: 42, status: 'active' }]))
+
+      await request(app).get('/api/projects/9/tasks').set('Cookie', cookie()).expect(200)
+      const res = await request(app).get('/api/tasks/42').set('Cookie', cookie())
+
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ id: 42, status: 'active' })
+      expect(seen).toHaveLength(1)
+    })
+
+    it('still forbids shared caches on a cached answer', async () => {
+      mockUpstream()
+
+      await request(app).get('/api/clients').set('Cookie', cookie()).expect(200)
+      const res = await request(app).get('/api/clients').set('Cookie', cookie())
+
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('private, no-store')
+    })
+  })
+
   describe('id validation', () => {
     it.each(['abc', '0', '1.5', '-1', '01', '%2E%2E', '12345678901'])(
       'rejects %s with 400 and no upstream call',
@@ -258,7 +304,12 @@ describe('memtimeRouter', () => {
       const a = express()
       a.use(cookieParser())
       const client = createMemtimeClient({ memtimeApiUrl: `${BASE}/`, ...options })
-      a.use('/api', memtimeRouter({ store, client }))
+      const hierarchyCache = createHierarchyCache({
+        client,
+        pages: createMemoryCache<string>({ ttlMs: 60_000, maxEntries: 10 }),
+        items: createMemoryCache<HierarchyItem>({ ttlMs: 60_000, maxEntries: 10 }),
+      })
+      a.use('/api', memtimeRouter({ store, hierarchyCache }))
       a.use(notFound)
       a.use(endSessionOnRevokedKey(store, { secureCookies: false }))
       a.use(errorHandler)

@@ -59,7 +59,10 @@ describe('Memtime rate-limit gate through the app', () => {
     const session = cookie()
 
     await request(app).get('/api/clients').set('Cookie', session).expect(200)
-    const blocked = await request(app).get('/api/clients').set('Cookie', session)
+    // Another page, since the first one is now cached.
+    const blocked = await request(app)
+      .get('/api/clients?offset=100')
+      .set('Cookie', session)
 
     expect(blocked.status).toBe(429)
     expect(blocked.body).toEqual({

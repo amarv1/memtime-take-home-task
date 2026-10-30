@@ -1,5 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { createMemoryCache } from '../../src/cache/memoryCache.ts'
+import { createHierarchyCache } from '../../src/hierarchy/hierarchyCache.ts'
+import type { HierarchyItem } from '../../src/hierarchy/hierarchyCache.ts'
 import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
 import { HttpError } from '../../src/middleware/errorHandler.ts'
 import { createTaskLookup } from '../../src/timeEntries/taskLookup.ts'
@@ -68,5 +70,30 @@ describe('taskLookup', () => {
     await expect(tasks.getStatus('key', 5)).rejects.toMatchObject({ status: 502 })
 
     expect(calls).toHaveLength(2)
+  })
+
+  it('needs no upstream call for a task seen in a list', async () => {
+    mockTask(() => HttpResponse.json({ id: 5, status: 'done' }))
+    const client = createMemtimeClient({ memtimeApiUrl: BASE })
+    const hierarchy = createHierarchyCache({
+      client,
+      pages: createMemoryCache<string>({ ttlMs: 60_000, maxEntries: 10 }),
+      items: createMemoryCache<HierarchyItem>({ ttlMs: 60_000, maxEntries: 10 }),
+    })
+    server.use(
+      http.get(`${BASE}/projects/:id/tasks`, () =>
+        HttpResponse.json([{ id: 5, status: 'active' }]),
+      ),
+    )
+    const tasks = createTaskLookup({
+      client,
+      cache: createMemoryCache<string>({ ttlMs: 60_000, maxEntries: 10 }),
+      hierarchy,
+    })
+
+    await hierarchy.getList('key', '/projects/9/tasks', '', 'label')
+
+    expect(await tasks.getStatus('key', 5)).toBe('active')
+    expect(calls).toHaveLength(0)
   })
 })

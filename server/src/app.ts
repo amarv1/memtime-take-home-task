@@ -4,6 +4,8 @@ import helmet from 'helmet'
 import { createMemoryCache } from './cache/memoryCache.ts'
 import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
+import { createHierarchyCache } from './hierarchy/hierarchyCache.ts'
+import type { HierarchyCache, HierarchyItem } from './hierarchy/hierarchyCache.ts'
 import { healthRouter } from './health/healthRouter.ts'
 import { createReadinessCheck } from './health/readiness.ts'
 import { createCircuitBreaker } from './memtime/circuitBreaker.ts'
@@ -39,6 +41,7 @@ interface Options {
   rateLimitGate?: RateLimitGate
   /** Must use the same breaker as `breaker`, or the readiness check won't see its state. */
   memtimeClient?: MemtimeClient
+  hierarchyCache?: HierarchyCache
   timeEntryService?: TimeEntryService
   taskLookup?: TaskLookup
 }
@@ -61,6 +64,18 @@ export function createApp({
     breaker,
     gate: rateLimitGate,
   }),
+  hierarchyCache = createHierarchyCache({
+    client: memtimeClient,
+    // The caps only bound memory.
+    pages: createMemoryCache<string>({
+      ttlMs: env.HIERARCHY_CACHE_TTL_MS,
+      maxEntries: 2_000,
+    }),
+    items: createMemoryCache<HierarchyItem>({
+      ttlMs: env.HIERARCHY_CACHE_TTL_MS,
+      maxEntries: 50_000,
+    }),
+  }),
   timeEntryService = createTimeEntryService({
     client: memtimeClient,
     // A few users at a time is plenty here; the cap only bounds memory.
@@ -72,6 +87,7 @@ export function createApp({
   }),
   taskLookup = createTaskLookup({
     client: memtimeClient,
+    hierarchy: hierarchyCache,
     cache: createMemoryCache<string>({
       ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
       maxEntries: 1000,
@@ -118,7 +134,7 @@ export function createApp({
     }),
   )
 
-  app.use('/api', memtimeRouter({ store: sessionStore, client: memtimeClient }))
+  app.use('/api', memtimeRouter({ store: sessionStore, hierarchyCache }))
 
   app.use(notFound)
   app.use(

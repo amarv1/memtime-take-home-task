@@ -1,5 +1,6 @@
 import { hashApiKey } from '../cache/hashApiKey.ts'
 import type { Cache } from '../cache/memoryCache.ts'
+import type { HierarchyCache } from '../hierarchy/hierarchyCache.ts'
 import type { MemtimeClient } from '../memtime/memtimeClient.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { throwIfRateLimited } from '../memtime/rateLimit.ts'
@@ -8,18 +9,23 @@ interface Options {
   client: MemtimeClient
   /** Holds a task's status; the same TTL as the entries keeps the two views about equally fresh. */
   cache: Cache<string>
+  /** Tasks seen in a list or lookup answer the status without a call. */
+  hierarchy?: HierarchyCache
 }
 
 export type TaskLookup = ReturnType<typeof createTaskLookup>
 
 /** Looks up a task's status for the rules that depend on it, one upstream call per task until the cache expires. */
-export function createTaskLookup({ client, cache }: Options) {
+export function createTaskLookup({ client, cache, hierarchy }: Options) {
   return {
     /** The task's status, or a 404 when the task doesn't exist. */
     async getStatus(apiKey: string, taskId: number): Promise<string> {
       const key = `${hashApiKey(apiKey)}:${taskId}`
       const cached = await cache.get(key)
       if (cached !== undefined) return cached
+
+      const seen = await hierarchy?.peekTask(apiKey, taskId)
+      if (typeof seen?.status === 'string') return seen.status
 
       const { status, headers, body } = await client.get(
         apiKey,
