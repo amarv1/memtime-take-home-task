@@ -26,11 +26,20 @@ pnpm dev
 
 ```
 src/
-  pages/        route-level components
-  components/   shared components (ui/ reserved for shadcn)
-  lib/          queryClient, utils
-  test/         test setup
+  pages/        route-level components (LoginPage, HomePage)
+  features/     feature modules; auth/ holds session api, hooks, RequireAuth
+  components/   shared components (AppLayout; ui/ reserved for shadcn)
+  lib/          api client, queryClient, utils
+  test/         test setup and helpers
 ```
+
+## Authentication
+
+Users sign in with their Memtime API key on `/login`. The key is sent once to
+`POST /api/session`; the server verifies it and sets an HttpOnly session
+cookie, so the key is never stored in the browser. `RequireAuth` guards the
+app routes using `GET /api/session` and redirects to `/login` when signed out.
+Sessions last 1 hour; any 401 from the API signs the user out with a toast.
 
 ## Stack
 
