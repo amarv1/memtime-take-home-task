@@ -2,7 +2,7 @@ import { hashApiKey } from '../cache/hashApiKey.ts'
 import type { Cache } from '../cache/memoryCache.ts'
 import type { MemtimeClient } from '../memtime/memtimeClient.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
-import { throwIfRateLimited } from './timeEntryService.ts'
+import { throwIfRateLimited } from '../memtime/rateLimit.ts'
 
 interface Options {
   client: MemtimeClient

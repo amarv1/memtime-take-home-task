@@ -4,6 +4,7 @@ import { HttpError } from '../middleware/errorHandler.ts'
 import { getSession, requireSession } from '../middleware/requireSession.ts'
 import type { SessionStore } from '../sessions/sessionStore.ts'
 import type { MemtimeClient } from './memtimeClient.ts'
+import { throwIfRateLimited } from './rateLimit.ts'
 
 interface Options {
   store: SessionStore
@@ -15,7 +16,7 @@ const ID_PATTERN = /^[1-9]\d{0,9}$/
 
 const FORWARDED_PARAMS = ['limit', 'offset', 'sortBy', 'order']
 
-// Headers a later rate-limit feature will need. Copied as they are; nothing acts on them here.
+// Rate-limit headers, copied as they are so the browser can see Memtime's budget.
 const PASSED_HEADERS = [
   'ratelimit-limit',
   'ratelimit-remaining',
@@ -42,7 +43,8 @@ function allowedQuery(query: Record<string, unknown>): string {
 
 /**
  * Read-only proxy for the client, project and task lists, and for single task and project lookups. It adds the session's
- * API key and passes the upstream answer through: no caching, throttling or retry.
+ * API key and passes the upstream answer through, with a friendly 429 when Memtime or the rate-limit gate
+ * refuses the call. No caching or retry.
  */
 export function memtimeRouter({ store, client }: Options) {
   async function forward(
@@ -64,6 +66,8 @@ export function memtimeRouter({ store, client }: Options) {
     }
     // The data belongs to one user, so shared caches must not keep it.
     res.setHeader('Cache-Control', 'private, no-store')
+    // After the headers are set, so the error answer keeps them.
+    throwIfRateLimited(status, headers)
     res
       .status(status)
       .type(headers.get('content-type') ?? 'application/json')

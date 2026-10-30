@@ -31,9 +31,13 @@ describe('memtimeRouter', () => {
   const store = createSessionStore({ ttlMs: 60_000 })
   afterAll(() => store.stop())
 
-  const app = createApp({
-    env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
-    sessionStore: store,
+  // A new app per test: a 429 would otherwise leave the key's budget used up for the next one.
+  let app: ReturnType<typeof createApp>
+  beforeEach(() => {
+    app = createApp({
+      env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
+      sessionStore: store,
+    })
   })
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`
@@ -135,7 +139,7 @@ describe('memtimeRouter', () => {
       expect(res.headers['cache-control']).toBe('private, no-store')
     })
 
-    it('passes a 429 through with its rate-limit headers', async () => {
+    it('answers a 429 with a friendly message, Retry-After and the rate-limit headers', async () => {
       mockUpstream(
         () =>
           new HttpResponse('{"error":"slow down"}', {
@@ -154,7 +158,9 @@ describe('memtimeRouter', () => {
       const res = await request(app).get(path).set('Cookie', cookie())
 
       expect(res.status).toBe(429)
-      expect(res.body).toEqual({ error: 'slow down' })
+      expect(res.body).toEqual({
+        error: 'Memtime is receiving too many requests.',
+      })
       expect(res.headers).toMatchObject({
         'ratelimit-limit': '15',
         'ratelimit-remaining': '0',

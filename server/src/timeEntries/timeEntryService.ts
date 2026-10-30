@@ -4,6 +4,7 @@ import { CircuitOpenError } from '../memtime/circuitBreaker.ts'
 import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
+import { throwIfRateLimited } from '../memtime/rateLimit.ts'
 
 export interface TimeEntry {
   id: number
@@ -30,16 +31,6 @@ interface Options {
 
 // The largest page the API serves. A shorter page is the last one.
 const PAGE_SIZE = 100
-
-export function throwIfRateLimited(status: number, headers: Headers) {
-  if (status !== 429) return
-  const retryAfter = headers.get('retry-after')
-  throw new HttpError(
-    429,
-    'Memtime is receiving too many requests. Please try again in a minute.',
-    retryAfter === null ? undefined : { 'Retry-After': retryAfter },
-  )
-}
 
 /** The `error` text of a Memtime error body (`{ "error": "..." }`), if it has one. */
 function upstreamReason(body: string): string | undefined {

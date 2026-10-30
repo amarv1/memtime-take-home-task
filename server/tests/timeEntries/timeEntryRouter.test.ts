@@ -177,7 +177,7 @@ describe('GET /api/tasks/:taskId/entries', () => {
 
     expect(res.status).toBe(429)
     expect(res.headers['retry-after']).toBe('30')
-    expect(json(res).error).toMatch(/try again/i)
+    expect(json(res).error).toMatch(/too many requests/i)
   })
 
   it('ends the session when upstream rejects the key', async () => {
