@@ -38,6 +38,11 @@ export default defineConfig([
     },
   },
   {
+    // Test helpers export functions alongside components.
+    files: ['src/test/**'],
+    rules: { 'react-refresh/only-export-components': 'off' },
+  },
+  {
     // Config files are plain JS and not part of the TS project.
     files: ['**/*.js'],
     extends: [js.configs.recommended, prettier],
