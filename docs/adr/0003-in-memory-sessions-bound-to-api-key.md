@@ -18,7 +18,15 @@ We will use cookie sessions that hold the key in server memory:
 - `/api/*` routes that call Memtime use a `requireSession` middleware to get the key.
 - If Memtime answers 401 to a call made with a session's key (the key was revoked or changed mid-session), the route throws `MemtimeKeyRejectedError`. An error middleware then deletes the session, clears the cookie and responds 401, so the frontend's existing 401 handler signs the user out. Memtime returns 401 for a bad or missing key, so that is the only status that ends a session this way.
 
-We will not add a CSRF token for now. `SameSite=Strict` keeps the cookie off cross-site requests, and the API only accepts JSON.
+We will not add a CSRF token for now. `SameSite=Strict` keeps the cookie off cross-site requests, and as a second layer the server answers 415 to any POST, PUT or PATCH that is not `Content-Type: application/json` (a cross-site form or `text/plain` request cannot send that type without a CORS preflight, which we never approve). DELETE is not a simple method, so browsers already preflight it.
+
+Because sign-in lets anyone test keys through our server, and each attempt costs an upstream call, abuse is limited in three ways:
+
+- `POST /api/session` is limited per client IP (10 attempts per 15 minutes by default, then 429).
+- The store keeps at most 5 sessions per API key; creating another drops that key's oldest.
+- The store holds at most 1000 sessions in total. When it is full of unexpired sessions, sign-in answers 503.
+
+The server also sends security headers (helmet: CSP with `frame-ancestors`, HSTS, `nosniff`).
 
 ## Consequences
 
