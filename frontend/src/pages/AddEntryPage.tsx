@@ -26,14 +26,24 @@ export function AddEntryPage() {
             .
           </p>
         ) : (
-          <AddEntry taskId={taskId} taskName={task.data?.name} />
+          <AddEntry
+            taskId={taskId}
+            taskName={task.data?.name}
+            taskStatus={task.data?.status}
+          />
         )}
       </div>
     </main>
   )
 }
 
-function AddEntry({ taskId, taskName }: { taskId: number; taskName?: string }) {
+interface AddEntryProps {
+  taskId: number
+  taskName?: string
+  taskStatus?: string
+}
+
+function AddEntry({ taskId, taskName, taskStatus }: AddEntryProps) {
   const navigate = useNavigate()
   const save = useCreateEntry(taskId)
   const entriesPath = `/tasks/${taskId}/entries`
@@ -42,6 +52,7 @@ function AddEntry({ taskId, taskName }: { taskId: number; taskName?: string }) {
     <EntryForm
       taskId={taskId}
       taskName={taskName}
+      taskStatus={taskStatus}
       save={save}
       submitLabel="Add entry"
       notFoundMessage="This task doesn't exist any more."

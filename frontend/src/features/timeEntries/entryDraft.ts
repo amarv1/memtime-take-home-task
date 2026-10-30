@@ -2,9 +2,7 @@ import { parseISO } from 'date-fns'
 import { z } from 'zod'
 import type { NewEntry, TimeEntry } from './api'
 import { toDateTimeInput } from './format'
-
-/** Only for a quick answer; the server enforces the full rules (limits, overlaps, warnings). */
-const MAX_COMMENT_LENGTH = 500
+import { MAX_COMMENT_LENGTH, timeErrors, type Times } from './rules'
 
 export interface FormValues {
   comment: string
@@ -54,7 +52,19 @@ export function isUnchanged(entry: TimeEntry, draft: NewEntry): boolean {
   )
 }
 
-/** Light checks that need no other data. The server is the authority on everything else. */
+/** The draft's times as exact instants, or undefined while a time is missing or unreadable. */
+export function draftTimes(values: FormValues, entry?: TimeEntry): Times | undefined {
+  if (!values.start || !values.end) return undefined
+  try {
+    const draft = toDraft(values, entry)
+    return { start: Date.parse(draft.start), end: Date.parse(draft.end) }
+  } catch {
+    // An unreadable local time can't become an instant.
+    return undefined
+  }
+}
+
+/** The checks that need no other data, run on every change. The server is the authority on everything else. */
 export function buildSchema(entry?: TimeEntry) {
   return z
     .object({
@@ -69,11 +79,14 @@ export function buildSchema(entry?: TimeEntry) {
       start: z.string().min(1, 'Enter a start time'),
       end: z.string().min(1, 'Enter an end time'),
     })
-    .refine(
-      (values) =>
-        !values.start ||
-        !values.end ||
-        Date.parse(toDraft(values, entry).end) > Date.parse(toDraft(values, entry).start),
-      { path: ['end'], message: 'End must be after the start' },
-    )
+    .superRefine((values, ctx) => {
+      if (!values.start || !values.end) return
+      const times = draftTimes(values, entry)
+      if (!times) {
+        ctx.addIssue({ code: 'custom', path: ['end'], message: 'Enter a valid time' })
+        return
+      }
+      for (const issue of timeErrors(times, Date.now()))
+        ctx.addIssue({ code: 'custom', path: [issue.field], message: issue.message })
+    })
 }

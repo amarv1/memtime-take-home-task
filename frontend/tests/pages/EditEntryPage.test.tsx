@@ -251,32 +251,33 @@ describe('EditEntryPage', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('saves anyway after a 409, sending the confirmed codes', async () => {
-    let first = true
-    const calls = mockUpdate(() => {
-      if (!first) return HttpResponse.json(entry)
-      first = false
-      return HttpResponse.json(
-        {
-          error: 'Please confirm this time entry',
-          warnings: [
-            { code: 'long_duration', field: 'end', message: 'Longer than 12 hours' },
-          ],
-        },
-        { status: 409 },
-      )
-    })
+  it('asks about a warning before sending, then sends the confirmed code', async () => {
+    const calls = mockUpdate()
     const { user } = renderAt('/tasks/398/entries/7/edit')
     await screen.findByLabelText('Comment')
 
     fill('End', '2025-01-01T22:00')
+    expect(field('End')).toHaveAccessibleDescription('This entry is longer than 12 hours')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Longer than 12 hours')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'This entry is longer than 12 hours',
+    )
+    expect(calls).toEqual([])
 
     await user.click(screen.getByRole('button', { name: 'Save anyway' }))
 
     expect(await screen.findByText('Entries list')).toBeInTheDocument()
-    expect(calls[1]?.body).toMatchObject({ acceptedWarnings: ['long_duration'] })
+    expect(calls[0]?.body).toMatchObject({ acceptedWarnings: ['long_duration'] })
+  })
+
+  it('does not warn about what the entry already had', async () => {
+    // The entry starts in 2025, more than 30 days ago.
+    renderAt('/tasks/398/entries/7/edit')
+    await screen.findByLabelText('Comment')
+
+    fill('Start', '2025-01-01T08:00')
+
+    expect(screen.queryByText('This entry starts more than 30 days ago')).toBeNull()
   })
 
   it('shows the warnings of a 409', async () => {

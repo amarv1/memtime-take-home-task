@@ -153,6 +153,49 @@ describe('AddEntryPage', () => {
     expect(bodies).toEqual([])
   })
 
+  it('shows an error once the user leaves a field, before any submit', async () => {
+    const { user } = renderAt('/tasks/398/entries/new')
+
+    await user.click(field('Comment'))
+    await user.tab()
+
+    expect(await screen.findByText('Enter a comment')).toBeInTheDocument()
+    await user.type(field('Comment'), 'W')
+    expect(screen.queryByText('Enter a comment')).toBeNull()
+  })
+
+  it.each([
+    [
+      'longer than 24 hours',
+      () => localAgo(30),
+      () => localAgo(2),
+      "An entry can't be longer than 24 hours",
+    ],
+    [
+      'an end in the future',
+      () => localAgo(1),
+      () => localAgo(-1),
+      "End can't be in the future",
+    ],
+    [
+      'a start before 2000',
+      () => '1999-12-31T09:00',
+      () => '1999-12-31T10:00',
+      "Start can't be before the year 2000",
+    ],
+  ])('blocks %s and sends nothing', async (_case, start, end, message) => {
+    const bodies = mockCreate()
+    const { user } = renderAt('/tasks/398/entries/new')
+    await user.type(field('Comment'), 'Work')
+
+    fill('Start', start())
+    fill('End', end())
+    await user.click(screen.getByRole('button', { name: 'Add entry' }))
+
+    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(bodies).toEqual([])
+  })
+
   it('shows a 400 under the field the server names, not in an alert', async () => {
     mockCreate(() =>
       HttpResponse.json(
@@ -196,6 +239,72 @@ describe('AddEntryPage', () => {
         },
         { status: 409 },
       )
+
+    it('warns under the field while typing', () => {
+      renderAt('/tasks/398/entries/new')
+
+      fill('Start', localAgo(14))
+      fill('End', localAgo(1))
+
+      expect(field('End')).toHaveAccessibleDescription(
+        'This entry is longer than 12 hours',
+      )
+      fill('Start', localAgo(24 * 31 + 2))
+      fill('End', localAgo(24 * 31 + 1))
+      expect(field('Start')).toHaveAccessibleDescription(
+        'This entry starts more than 30 days ago',
+      )
+      expect(screen.queryByText('This entry is longer than 12 hours')).toBeNull()
+    })
+
+    it('warns about a completed task', async () => {
+      renderAt('/tasks/400/entries/new')
+
+      await waitFor(() =>
+        expect(field('Task')).toHaveAccessibleDescription('This task is completed'),
+      )
+    })
+
+    it('asks about its own warnings before sending, then sends them as confirmed', async () => {
+      const bodies = mockCreate()
+      const { user } = renderAt('/tasks/398/entries/new')
+      fill('Comment', 'Work')
+      fill('Start', localAgo(14))
+      fill('End', localAgo(1))
+
+      await submit(user)
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'This entry is longer than 12 hours',
+      )
+      expect(bodies).toEqual([])
+
+      await user.click(screen.getByRole('button', { name: 'Save anyway' }))
+
+      expect(await screen.findByText('Entries list')).toBeInTheDocument()
+      expect(bodies).toHaveLength(1)
+      expect(bodies[0]).toMatchObject({ acceptedWarnings: ['long_duration'] })
+    })
+
+    it('keeps its own confirmed codes when the server warns about an overlap', async () => {
+      let first = true
+      const bodies = mockCreate(() => {
+        if (!first) return HttpResponse.json(buildEntry(77, 398), { status: 201 })
+        first = false
+        return warn('overlap', 'Overlaps another of your entries')
+      })
+      const { user } = renderAt('/tasks/398/entries/new')
+      fill('Comment', 'Work')
+      fill('Start', localAgo(14))
+      fill('End', localAgo(1))
+      await submit(user)
+      await user.click(await screen.findByRole('button', { name: 'Save anyway' }))
+      await screen.findByText('Overlaps another of your entries')
+
+      await user.click(screen.getByRole('button', { name: 'Save anyway' }))
+
+      await screen.findByText('Entries list')
+      expect(bodies[1]).toMatchObject({ acceptedWarnings: ['long_duration', 'overlap'] })
+    })
 
     it('shows the warnings of a 409 with Save anyway and Keep editing', async () => {
       mockCreate(() => warn('long_duration', 'This entry is longer than 12 hours'))
