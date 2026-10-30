@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { parseTaskId, useTask } from '@/features/hierarchy/hooks'
 import { parseEntryId, type TimeEntry } from '@/features/timeEntries/api'
 import { EntryForm } from '@/features/timeEntries/EntryForm'
+import { describeEntry } from '@/features/timeEntries/format'
 import { useTaskEntry, useUpdateEntry } from '@/features/timeEntries/hooks'
 import { ApiError } from '@/lib/api'
 
@@ -92,7 +93,9 @@ function EditEntry({ taskId, taskName, entry }: EditEntryProps) {
         void navigate(entriesPath)
       }}
       onSaved={(updated) => {
-        toast.success(`Time entry #${updated.id} updated`)
+        toast.success(`Time entry #${updated.id} updated`, {
+          description: describeEntry(updated),
+        })
         void navigate(entriesPath)
       }}
     />

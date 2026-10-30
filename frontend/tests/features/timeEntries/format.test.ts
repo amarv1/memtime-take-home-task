@@ -1,4 +1,8 @@
-import { formatDateTime, formatDuration } from '@/features/timeEntries/format'
+import {
+  describeEntry,
+  formatDateTime,
+  formatDuration,
+} from '@/features/timeEntries/format'
 
 describe('formatDuration', () => {
   it.each([
@@ -26,5 +30,28 @@ describe('formatDateTime', () => {
 
   it('shows a dash for an invalid date', () => {
     expect(formatDateTime('nope')).toBe('—')
+  })
+})
+
+describe('describeEntry', () => {
+  it('joins the comment, the range and the duration', () => {
+    const entry = {
+      comment: 'Fix the header',
+      start: '2025-01-01T09:00:00Z',
+      end: '2025-01-01T10:05:00Z',
+    }
+    expect(describeEntry(entry)).toBe(
+      `Fix the header · ${formatDateTime(entry.start)} – ${formatDateTime(entry.end)} · 1h 5m`,
+    )
+  })
+
+  it('cuts a long comment to 80 characters', () => {
+    const entry = {
+      comment: 'a'.repeat(200),
+      start: '2025-01-01T09:00:00Z',
+      end: '2025-01-01T10:00:00Z',
+    }
+    const [comment] = describeEntry(entry).split(' · ')
+    expect(comment).toBe(`${'a'.repeat(79)}…`)
   })
 })

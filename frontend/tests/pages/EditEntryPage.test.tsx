@@ -6,6 +6,7 @@ import { buildEntry } from '../support/entries'
 import { mockHierarchy } from '../support/hierarchy'
 import { server } from '../support/server'
 import { renderWithProviders } from '../support/utils'
+import { formatDateTime } from '@/features/timeEntries/format'
 import { EditEntryPage } from '@/pages/EditEntryPage'
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), info: vi.fn() } }))
@@ -120,7 +121,9 @@ describe('EditEntryPage', () => {
         },
       },
     ])
-    expect(toast.success).toHaveBeenCalledWith('Time entry #7 updated')
+    expect(toast.success).toHaveBeenCalledWith('Time entry #7 updated', {
+      description: `Fix the header · ${formatDateTime(entry.start)} – ${formatDateTime(entry.end)} · 1h 5m`,
+    })
   })
 
   it('marks the task’s entries stale after saving', async () => {

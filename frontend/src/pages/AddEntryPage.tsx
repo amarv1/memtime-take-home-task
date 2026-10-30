@@ -2,6 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { parseTaskId, useTask } from '@/features/hierarchy/hooks'
 import { EntryForm } from '@/features/timeEntries/EntryForm'
+import { describeEntry } from '@/features/timeEntries/format'
 import { useCreateEntry } from '@/features/timeEntries/hooks'
 import { ApiError } from '@/lib/api'
 
@@ -46,7 +47,9 @@ function AddEntry({ taskId, taskName }: { taskId: number; taskName?: string }) {
       notFoundMessage="This task doesn't exist any more."
       onCancel={() => void navigate(entriesPath)}
       onSaved={(entry) => {
-        toast.success(`Time entry #${entry.id} added`)
+        toast.success(`Time entry #${entry.id} added`, {
+          description: describeEntry(entry),
+        })
         void navigate(entriesPath)
       }}
     />

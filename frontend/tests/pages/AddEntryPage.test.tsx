@@ -90,7 +90,10 @@ describe('AddEntryPage', () => {
         end: new Date(localAgo(2.5)).toISOString(),
       },
     ])
-    expect(toast.success).toHaveBeenCalledWith('Time entry #77 added')
+    const created = buildEntry(77, 398)
+    expect(toast.success).toHaveBeenCalledWith('Time entry #77 added', {
+      description: `Entry 77 · ${formatDateTime(created.start)} – ${formatDateTime(created.end)} · 1h 5m`,
+    })
     expect(screen.getByTestId('location')).toHaveTextContent('/tasks/398/entries')
   })
 
