@@ -6,6 +6,7 @@ describe('loadEnv', () => {
       NODE_ENV: 'development',
       PORT: 3000,
       MEMTIME_API_URL: 'https://interview-api.memtime-demo.deno.net/api/v1',
+      SESSION_TTL_MS: 3_600_000,
     })
   })
 
