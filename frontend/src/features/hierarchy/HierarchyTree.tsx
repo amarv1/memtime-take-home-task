@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
@@ -7,8 +7,20 @@ import { ClientItem } from './HierarchyNodes'
 import { parseTaskId, useClients, useProject, useTask } from './hooks'
 import { NodeList } from './NodeList'
 import { TaskLinkNotice } from './TaskLinkNotice'
-import { TreeContext, type TreeTarget } from './treeContext'
+import {
+  TreeContext,
+  createTreeStore,
+  type TreeApi,
+  type TreeSnapshot,
+  type TreeStore,
+  type TreeTarget,
+} from './treeContext'
 import { useTreeKeyboard } from './useTreeKeyboard'
+
+/** Subscribes the tree itself, which owns the store and so has no context yet. */
+function useStoreValue<T>(store: TreeStore, select: (snapshot: TreeSnapshot) => T): T {
+  return useSyncExternalStore(store.subscribe, () => select(store.getSnapshot()))
+}
 
 /**
  * Clients, their projects and their tasks. Each level loads when its parent is expanded.
@@ -22,50 +34,73 @@ export function HierarchyTree() {
   const taskId = parseTaskId(rawTaskId)
   const task = useTask(taskId ?? undefined)
   const project = useProject(task.data?.projectId)
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
-  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [store] = useState(createTreeStore)
+  // Collapsing or expanding changes the DOM the fallback below looks at.
+  useStoreValue(store, (s) => s.expanded)
+  const activeKey = useStoreValue(store, (s) => s.activeKey)
   // What the selection has already been revealed and scrolled to, so that it happens once
   // per selection and a collapsed client isn't forced open again.
-  const [revealedTaskId, setRevealedTaskId] = useState<number | null>(null)
-  const [shownKey, setShownKey] = useState<string | null>(null)
+  const revealedTaskId = useRef<number | null>(null)
+  const shownKey = useRef<string | null>(null)
   const treeRef = useRef<HTMLUListElement>(null)
+  // Latest values for the stable callbacks below.
+  const navigateRef = useRef(navigate)
+  useLayoutEffect(() => {
+    navigateRef.current = navigate
+  })
 
-  const target: TreeTarget | null =
-    task.data && project.data
-      ? {
-          clientId: project.data.clientId,
-          projectId: task.data.projectId,
-          taskId: task.data.id,
-        }
-      : null
+  const clientId = project.data?.clientId
+  const projectId = task.data?.projectId
+  const loadedTaskId = task.data?.id
+  const target = useMemo<TreeTarget | null>(
+    () =>
+      clientId !== undefined && projectId !== undefined && loadedTaskId !== undefined
+        ? { clientId, projectId, taskId: loadedTaskId }
+        : null,
+    [clientId, projectId, loadedTaskId],
+  )
+  const firstId = clients.data?.[0]?.id
+  const firstKey = firstId === undefined ? '' : `client:${firstId}`
 
-  // Adjusting state while rendering (not in an effect) keeps the tree from flashing collapsed.
-  if (taskId === null && (revealedTaskId !== null || shownKey !== null)) {
-    setRevealedTaskId(null)
-    setShownKey(null)
-  }
-  if (target && target.taskId !== revealedTaskId) {
-    const clientKey = `client:${target.clientId}`
-    setRevealedTaskId(target.taskId)
-    setExpanded(
-      (current) =>
-        new Set([...current, clientKey, `${clientKey}/project:${target.projectId}`]),
-    )
-  }
+  // Rows read these through the store. Layout effects run before paint, so rows never show
+  // the old selection, and a revealed path doesn't flash collapsed.
+  useLayoutEffect(() => {
+    if (taskId === null) {
+      revealedTaskId.current = null
+      shownKey.current = null
+    }
+    store.set({ selectedTaskId: taskId, firstKey, target })
+    if (target && target.taskId !== revealedTaskId.current) {
+      revealedTaskId.current = target.taskId
+      const clientKey = `client:${target.clientId}`
+      store.expand([clientKey, `${clientKey}/project:${target.projectId}`])
+    }
+  }, [store, taskId, firstKey, target])
 
-  function toggle(key: string) {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (!next.delete(key)) next.add(key)
-      return next
-    })
-  }
-  const onKeyDown = useTreeKeyboard(toggle)
+  const api = useMemo<TreeApi>(
+    () => ({
+      store,
+      toggle: store.toggle,
+      selectTask: (id) => {
+        if (id !== store.getSnapshot().selectedTaskId)
+          void navigateRef.current(`/tasks/${id}/entries`)
+      },
+      onSelectedRow: (element, key) => {
+        if (!element || key === shownKey.current) return
+        // Make it the tab stop and bring it into view, but leave focus alone: moving it
+        // on page load would hijack a screen reader. A click has already focused the row.
+        shownKey.current = key
+        store.set({ activeKey: key })
+        element.scrollIntoView({ block: 'nearest' })
+      },
+    }),
+    [store],
+  )
+  const onKeyDown = useTreeKeyboard(store.toggle)
 
   // If the item that was in the tab order is gone (its parent collapsed, or a
   // "Load more" row vanished), fall back to the first item so Tab still reaches the tree.
   // Runs after every render on purpose: the DOM can change without activeKey changing.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const tree = treeRef.current
     if (
@@ -73,7 +108,7 @@ export function HierarchyTree() {
       tree &&
       !tree.querySelector(`[data-node-key="${activeKey}"]`)
     ) {
-      setActiveKey(null)
+      store.set({ activeKey: null })
     }
   })
 
@@ -116,30 +151,8 @@ export function HierarchyTree() {
     return <p className="text-sm text-muted-foreground">No clients yet.</p>
   }
 
-  const first = clients.data?.[0]
-  const firstKey = first ? `client:${first.id}` : ''
-
   return (
-    <TreeContext.Provider
-      value={{
-        tabKey: activeKey ?? firstKey,
-        isExpanded: (key) => expanded.has(key),
-        toggle,
-        selectedTaskId: taskId,
-        selectTask: (id) => {
-          if (id !== taskId) void navigate(`/tasks/${id}/entries`)
-        },
-        target,
-        onSelectedRow: (element, key) => {
-          if (!element || key === shownKey) return
-          // Make it the tab stop and bring it into view, but leave focus alone: moving it
-          // on page load would hijack a screen reader. A click has already focused the row.
-          setShownKey(key)
-          setActiveKey(key)
-          element.scrollIntoView({ block: 'nearest' })
-        },
-      }}
-    >
+    <TreeContext.Provider value={api}>
       {rawTaskId !== undefined && !target && (
         <TaskLinkNotice
           taskId={taskId}
@@ -157,7 +170,7 @@ export function HierarchyTree() {
           const item = (event.target as HTMLElement).closest<HTMLElement>(
             '[role="treeitem"]',
           )
-          if (item?.dataset.nodeKey) setActiveKey(item.dataset.nodeKey)
+          if (item?.dataset.nodeKey) store.set({ activeKey: item.dataset.nodeKey })
         }}
       >
         <NodeList

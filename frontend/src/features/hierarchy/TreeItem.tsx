@@ -1,9 +1,9 @@
 import { ChevronRight } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
-import { useIsFetching } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { useIsFetchingWhen } from './hooks'
 import { ancestorRowClass, indent, rowClass, selectedRowClass } from './rowStyle'
-import { useTree } from './treeContext'
+import { useIsExpanded, useIsTabStop, useTree } from './treeContext'
 
 interface Props {
   level: number
@@ -34,11 +34,16 @@ export function TreeItem({
   ancestor,
   onSelect,
 }: Props) {
-  const { tabKey, isExpanded, toggle, onSelectedRow } = useTree()
+  const { toggle, onSelectedRow } = useTree()
   const nameId = useId()
-  const fetching = useIsFetching({ queryKey: childrenQueryKey ?? [nodeKey] })
   const expandable = children !== undefined
-  const expanded = expandable && isExpanded(nodeKey)
+  const expanded = useIsExpanded(nodeKey) && expandable
+  const tabStop = useIsTabStop(nodeKey)
+  // Leaves and collapsed rows have nothing in flight, so they don't watch the cache.
+  const fetching = useIsFetchingWhen(
+    childrenQueryKey ?? [nodeKey],
+    expanded && childrenQueryKey !== undefined,
+  )
 
   return (
     // Enter and Space reach `onSelect` as a click: the tree's key handler calls `click()`.
@@ -53,7 +58,7 @@ export function TreeItem({
       aria-current={ancestor ? true : undefined}
       aria-busy={expanded && childrenQueryKey && fetching > 0 ? true : undefined}
       aria-labelledby={nameId}
-      tabIndex={nodeKey === tabKey ? 0 : -1}
+      tabIndex={tabStop ? 0 : -1}
       data-node-key={nodeKey}
       className="group/item outline-none"
       onClick={onSelect}

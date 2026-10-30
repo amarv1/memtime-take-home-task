@@ -2,7 +2,7 @@ import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { indent, rowClass } from './rowStyle'
-import { useTree } from './treeContext'
+import { useIsTabStop } from './treeContext'
 
 interface Props {
   level: number
@@ -18,7 +18,7 @@ interface Props {
  * can reach it like any other item.
  */
 export function StatusRow({ level, nodeKey, onActivate, disabled, children }: Props) {
-  const { tabKey } = useTree()
+  const tabStop = useIsTabStop(nodeKey)
   const actionable = onActivate !== undefined
 
   return (
@@ -30,7 +30,7 @@ export function StatusRow({ level, nodeKey, onActivate, disabled, children }: Pr
       role="treeitem"
       aria-level={level}
       aria-disabled={disabled ? true : undefined}
-      tabIndex={nodeKey === tabKey ? 0 : -1}
+      tabIndex={tabStop ? 0 : -1}
       data-node-key={nodeKey}
       className="group/item outline-none"
       onClick={actionable && !disabled ? onActivate : undefined}

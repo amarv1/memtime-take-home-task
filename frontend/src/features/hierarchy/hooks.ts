@@ -1,4 +1,6 @@
+import { useCallback, useSyncExternalStore } from 'react'
 import {
+  notifyManager,
   useInfiniteQuery,
   useQuery,
   useQueryClient,
@@ -28,6 +30,9 @@ export const hierarchyKeys = {
 // The app only reads this data, so re-expanding a node within this window must not refetch.
 const STALE_TIME = 5 * 60_000
 
+// Module-level so `data` keeps its identity between renders.
+const flatten = <T>(data: { pages: T[][] }) => data.pages.flat()
+
 /** Shared paging: a full page means there may be more, a short one means we're done. */
 function paged<T>(fetchPage: (offset: number) => Promise<T[]>) {
   return {
@@ -35,7 +40,7 @@ function paged<T>(fetchPage: (offset: number) => Promise<T[]>) {
     initialPageParam: 0,
     getNextPageParam: (last: T[], all: T[][]) =>
       last.length < PAGE_SIZE ? undefined : all.reduce((sum, p) => sum + p.length, 0),
-    select: (data: { pages: T[][] }) => data.pages.flat(),
+    select: flatten<T>,
     staleTime: STALE_TIME,
   }
 }
@@ -114,6 +119,27 @@ export function useProject(projectId: number | undefined) {
     initialData: () => cached()?.data,
     initialDataUpdatedAt: () => cached()?.updatedAt,
   })
+}
+
+const noSubscription = () => undefined
+
+/**
+ * Like `useIsFetching`, but watches the query cache only while `enabled`.
+ * Rows with nothing to fetch pay nothing.
+ */
+export function useIsFetchingWhen(queryKey: readonly unknown[], enabled: boolean) {
+  const queryClient = useQueryClient()
+  const keyJson = JSON.stringify(queryKey)
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      enabled
+        ? queryClient.getQueryCache().subscribe(notifyManager.batchCalls(onChange))
+        : noSubscription,
+    [queryClient, enabled],
+  )
+  return useSyncExternalStore(subscribe, () =>
+    enabled ? queryClient.isFetching({ queryKey: JSON.parse(keyJson) as unknown[] }) : 0,
+  )
 }
 
 // Same rule as the server: a positive integer without leading zeros.

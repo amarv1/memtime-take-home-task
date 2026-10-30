@@ -1,18 +1,21 @@
+import { memo, useCallback } from 'react'
 import { useProjects, useTasks, hierarchyKeys } from './hooks'
 import type { Client, Project, Task } from './api'
 import { NodeList } from './NodeList'
 import { StatusBadge } from './StatusBadge'
 import { TreeItem } from './TreeItem'
-import { childKey, useTree } from './treeContext'
+import { childKey, useTree, useTreeSelector } from './treeContext'
 
-export function ClientItem({ client }: { client: Client }) {
+// Rows are memoized and read tree state through selectors, so a row renders again only
+// when its own item or its own flags change.
+export const ClientItem = memo(function ClientItem({ client }: { client: Client }) {
   const nodeKey = `client:${client.id}`
-  const { target } = useTree()
+  const ancestor = useTreeSelector((s) => s.target?.clientId === client.id)
   return (
     <TreeItem
       level={1}
       nodeKey={nodeKey}
-      ancestor={target?.clientId === client.id}
+      ancestor={ancestor}
       name={client.name}
       childrenQueryKey={hierarchyKeys.projects(client.id)}
       details={<StatusBadge status={client.status} />}
@@ -20,16 +23,18 @@ export function ClientItem({ client }: { client: Client }) {
       <ProjectRows clientId={client.id} parentKey={nodeKey} />
     </TreeItem>
   )
-}
+})
 
 // Mounted only while the client is expanded, which is what makes the fetch lazy.
 function ProjectRows({ clientId, parentKey }: { clientId: number; parentKey: string }) {
   const query = useProjects(clientId)
-  const { target } = useTree()
+  const targetId = useTreeSelector((s) =>
+    s.target?.clientId === clientId ? s.target.projectId : undefined,
+  )
   return (
     <NodeList
       query={query}
-      targetId={target?.clientId === clientId ? target.projectId : undefined}
+      targetId={targetId}
       level={2}
       parentKey={parentKey}
       noun="projects"
@@ -44,13 +49,19 @@ function ProjectRows({ clientId, parentKey }: { clientId: number; parentKey: str
   )
 }
 
-function ProjectItem({ project, nodeKey }: { project: Project; nodeKey: string }) {
-  const { target } = useTree()
+const ProjectItem = memo(function ProjectItem({
+  project,
+  nodeKey,
+}: {
+  project: Project
+  nodeKey: string
+}) {
+  const ancestor = useTreeSelector((s) => s.target?.projectId === project.id)
   return (
     <TreeItem
       level={2}
       nodeKey={nodeKey}
-      ancestor={target?.projectId === project.id}
+      ancestor={ancestor}
       name={project.name}
       childrenQueryKey={hierarchyKeys.tasks(project.id)}
       details={<StatusBadge status={project.status} />}
@@ -58,15 +69,17 @@ function ProjectItem({ project, nodeKey }: { project: Project; nodeKey: string }
       <TaskRows projectId={project.id} parentKey={nodeKey} />
     </TreeItem>
   )
-}
+})
 
 function TaskRows({ projectId, parentKey }: { projectId: number; parentKey: string }) {
   const query = useTasks(projectId)
-  const { target } = useTree()
+  const targetId = useTreeSelector((s) =>
+    s.target?.projectId === projectId ? s.target.taskId : undefined,
+  )
   return (
     <NodeList
       query={query}
-      targetId={target?.projectId === projectId ? target.taskId : undefined}
+      targetId={targetId}
       level={3}
       parentKey={parentKey}
       noun="tasks"
@@ -81,15 +94,23 @@ function TaskRows({ projectId, parentKey }: { projectId: number; parentKey: stri
   )
 }
 
-function TaskItem({ task, nodeKey }: { task: Task; nodeKey: string }) {
-  const { selectedTaskId, selectTask } = useTree()
+const TaskItem = memo(function TaskItem({
+  task,
+  nodeKey,
+}: {
+  task: Task
+  nodeKey: string
+}) {
+  const { selectTask } = useTree()
+  const selected = useTreeSelector((s) => s.selectedTaskId === task.id)
+  const onSelect = useCallback(() => selectTask(task.id), [selectTask, task.id])
   return (
     <TreeItem
       level={3}
       nodeKey={nodeKey}
       name={task.name}
-      selected={selectedTaskId === task.id}
-      onSelect={() => selectTask(task.id)}
+      selected={selected}
+      onSelect={onSelect}
       details={
         <>
           <span className="shrink-0 text-xs text-muted-foreground">#{task.id}</span>
@@ -98,4 +119,4 @@ function TaskItem({ task, nodeKey }: { task: Task; nodeKey: string }) {
       }
     />
   )
-}
+})
