@@ -1,3 +1,4 @@
+import { logger } from '../logger.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 
 interface Options {
@@ -26,14 +27,21 @@ export async function verifyApiKey(
     })
     status = res.status
     await res.body?.cancel()
-  } catch {
+  } catch (err) {
+    // Log what failed, never the key: only the error name and its cause's message.
+    const reason = err instanceof Error ? err.name : 'unknown error'
+    const code =
+      err instanceof Error && err.cause instanceof Error ? ` (${err.cause.message})` : ''
+    logger.error(`Memtime key check failed: ${reason}${code}`)
     throw new HttpError(502, "Couldn't reach Memtime. Please try again.")
   }
 
   if (status >= 200 && status < 300) return true
   if (status === 401 || status === 403) return false
   if (status === 429) {
+    logger.warn('Memtime key check rate limited (429)')
     throw new HttpError(429, 'Too many attempts. Wait a minute and try again.')
   }
+  logger.error(`Memtime key check failed: upstream returned ${status}`)
   throw new HttpError(502, "Couldn't reach Memtime. Please try again.")
 }

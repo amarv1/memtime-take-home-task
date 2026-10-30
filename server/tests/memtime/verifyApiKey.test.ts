@@ -1,6 +1,7 @@
 import { http, HttpResponse, delay } from 'msw'
 import { server } from '../support/server.ts'
 import { HttpError } from '../../src/middleware/errorHandler.ts'
+import { logger } from '../../src/logger.ts'
 import { verifyApiKey } from '../../src/memtime/verifyApiKey.ts'
 
 const BASE = 'https://upstream.test/api/v1'
@@ -87,5 +88,57 @@ describe('verifyApiKey', () => {
     }
     server.use(http.get(`${BASE}/clients`, () => HttpResponse.error()))
     expect(((await failure(verifyApiKey(BASE, KEY))) as Error).message).not.toContain(KEY)
+  })
+
+  describe('logging', () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it.each([500, 404])('logs an error for upstream %i', async (status) => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      respondWith(status)
+
+      await failure(verifyApiKey(BASE, KEY))
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining(String(status)))
+    })
+
+    it('logs an error on a network failure', async () => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      server.use(http.get(`${BASE}/clients`, () => HttpResponse.error()))
+
+      await failure(verifyApiKey(BASE, KEY))
+
+      expect(error).toHaveBeenCalledOnce()
+    })
+
+    it('warns when rate limited', async () => {
+      const warn = vi.spyOn(logger, 'warn').mockImplementation(vi.fn())
+      respondWith(429)
+
+      await failure(verifyApiKey(BASE, KEY))
+
+      expect(warn).toHaveBeenCalledOnce()
+    })
+
+    it('does not log a rejected key, which is the caller’s mistake, not an outage', async () => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      respondWith(401)
+
+      await verifyApiKey(BASE, KEY)
+
+      expect(error).not.toHaveBeenCalled()
+    })
+
+    it('never puts the key in a log line', async () => {
+      const error = vi.spyOn(logger, 'error').mockImplementation(vi.fn())
+      respondWith(500)
+      await failure(verifyApiKey(BASE, KEY))
+      server.use(http.get(`${BASE}/clients`, () => HttpResponse.error()))
+      await failure(verifyApiKey(BASE, KEY))
+
+      expect(JSON.stringify(error.mock.calls)).not.toContain(KEY)
+    })
   })
 })
