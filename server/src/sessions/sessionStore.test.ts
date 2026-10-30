@@ -1,12 +1,15 @@
-import { createSessionStore } from './sessionStore.ts'
+import { SessionLimitError, createSessionStore } from './sessionStore.ts'
 
 describe('sessionStore', () => {
   let time = 1_000_000
   const now = () => time
   const stores: ReturnType<typeof createSessionStore>[] = []
 
-  function makeStore(sweepIntervalMs?: number) {
-    const store = createSessionStore({ ttlMs: 1000, now, sweepIntervalMs })
+  function makeStore(
+    sweepIntervalMs?: number,
+    limits: { maxSessions?: number; maxPerKey?: number } = {},
+  ) {
+    const store = createSessionStore({ ttlMs: 1000, now, sweepIntervalMs, ...limits })
     stores.push(store)
     return store
   }
@@ -83,5 +86,37 @@ describe('sessionStore', () => {
 
     store.stop()
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('drops the oldest session of a key once it has maxPerKey', () => {
+    const store = makeStore(undefined, { maxPerKey: 2 })
+    const first = store.create('key')
+    const other = store.create('other')
+    const second = store.create('key')
+    const third = store.create('key')
+
+    expect(store.get(first.id)).toBeUndefined()
+    expect(store.get(second.id)).toBeDefined()
+    expect(store.get(third.id)).toBeDefined()
+    expect(store.get(other.id)).toBeDefined()
+  })
+
+  it('refuses new sessions at maxSessions, until expired ones are swept', () => {
+    const store = makeStore(undefined, { maxSessions: 2 })
+    store.create('a')
+    store.create('b')
+
+    expect(() => store.create('c')).toThrow(SessionLimitError)
+
+    time += 1000
+    expect(store.create('c').apiKey).toBe('c')
+  })
+
+  it('makes room at maxSessions by replacing the key own oldest session', () => {
+    const store = makeStore(undefined, { maxSessions: 2, maxPerKey: 1 })
+    store.create('a')
+    store.create('b')
+
+    expect(store.create('a').apiKey).toBe('a')
   })
 })

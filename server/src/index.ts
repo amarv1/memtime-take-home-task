@@ -4,7 +4,11 @@ import { createSessionStore } from './sessions/sessionStore.ts'
 import { registerGracefulShutdown } from './shutdown.ts'
 
 const env = loadEnv()
-const sessionStore = createSessionStore({ ttlMs: env.SESSION_TTL_MS })
+const sessionStore = createSessionStore({
+  ttlMs: env.SESSION_TTL_MS,
+  maxSessions: env.MAX_SESSIONS,
+  maxPerKey: env.MAX_SESSIONS_PER_KEY,
+})
 
 const server = createApp({ env, sessionStore }).listen(env.PORT, () => {
   console.info(`Server listening on http://localhost:${env.PORT}`)

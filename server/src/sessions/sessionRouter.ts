@@ -7,6 +7,7 @@ import {
   readSessionId,
   sessionCookieOptions,
 } from '../middleware/requireSession.ts'
+import { SessionLimitError } from './sessionStore.ts'
 import type { Session, SessionStore } from './sessionStore.ts'
 
 const bodySchema = z.object({ apiKey: z.string().trim().min(1).max(512) })
@@ -46,7 +47,14 @@ export function sessionRouter({
     const oldId = readSessionId(req.cookies)
     if (oldId) store.delete(oldId)
 
-    const session = store.create(apiKey)
+    let session: Session
+    try {
+      session = store.create(apiKey)
+    } catch (err) {
+      if (err instanceof SessionLimitError)
+        throw new HttpError(503, 'Too many active sessions. Try again later.')
+      throw err
+    }
     res.cookie(SESSION_COOKIE, session.id, {
       ...cookieOptions,
       maxAge: Math.floor(ttlMs / 1000) * 1000,

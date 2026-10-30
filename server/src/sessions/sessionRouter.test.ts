@@ -12,9 +12,17 @@ describe('session routes', () => {
   let time = 1_700_000_000_000
   const stores: ReturnType<typeof createSessionStore>[] = []
 
-  function setup(nodeEnv: 'development' | 'production' | 'test' = 'test') {
-    const env = loadEnv({ NODE_ENV: nodeEnv, MEMTIME_API_URL: UPSTREAM })
-    const store = createSessionStore({ ttlMs: env.SESSION_TTL_MS, now: () => time })
+  function setup(
+    nodeEnv: 'development' | 'production' | 'test' = 'test',
+    extra: NodeJS.ProcessEnv = {},
+  ) {
+    const env = loadEnv({ NODE_ENV: nodeEnv, MEMTIME_API_URL: UPSTREAM, ...extra })
+    const store = createSessionStore({
+      ttlMs: env.SESSION_TTL_MS,
+      maxSessions: env.MAX_SESSIONS,
+      maxPerKey: env.MAX_SESSIONS_PER_KEY,
+      now: () => time,
+    })
     stores.push(store)
     return { app: createApp({ env, sessionStore: store }), store }
   }
@@ -43,6 +51,17 @@ describe('session routes', () => {
   })
 
   describe('POST /api/session', () => {
+    it('answers 503 when the session store is full', async () => {
+      const { app } = setup('test', { MAX_SESSIONS: '1' })
+      upstream(200)
+      await request(app).post('/api/session').send({ apiKey: 'a' }).expect(200)
+
+      const res = await request(app).post('/api/session').send({ apiKey: 'b' })
+
+      expect(res.status).toBe(503)
+      expect(res.body).toEqual({ error: 'Too many active sessions. Try again later.' })
+    })
+
     it('signs in with a valid key', async () => {
       const { app } = setup()
       upstream(200)
@@ -118,8 +137,8 @@ describe('session routes', () => {
     })
 
     it.each([
-      ['a missing body', undefined],
-      ['a missing field', {}],
+      ['an empty JSON body', {}],
+      ['a missing field', { other: 1 }],
       ['an empty key', { apiKey: '' }],
       ['a blank key', { apiKey: '   ' }],
       ['a non-string key', { apiKey: 123 }],

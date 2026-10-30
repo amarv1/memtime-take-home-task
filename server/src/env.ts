@@ -5,6 +5,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   MEMTIME_API_URL: z.url().default('https://interview-api.memtime-demo.deno.net/api/v1'),
   SESSION_TTL_MS: z.coerce.number().int().positive().default(3_600_000),
+  SIGN_IN_RATE_LIMIT: z.coerce.number().int().positive().default(10),
+  MAX_SESSIONS: z.coerce.number().int().positive().default(1000),
+  MAX_SESSIONS_PER_KEY: z.coerce.number().int().positive().default(5),
 })
 
 export type Env = z.infer<typeof envSchema>

@@ -54,9 +54,14 @@ production). The key is never sent back to the browser. See
 Later routes use `requireSession(store)`, which puts the session on `res.locals.session`
 (read it with `getSession(res)`) or answers 401.
 
-| Variable         | Default   | Meaning                                           |
-| ---------------- | --------- | ------------------------------------------------- |
-| `SESSION_TTL_MS` | `3600000` | How long a sign-in lasts (absolute, not extended) |
+| Variable               | Default   | Meaning                                               |
+| ---------------------- | --------- | ----------------------------------------------------- |
+| `SESSION_TTL_MS`       | `3600000` | How long a sign-in lasts (absolute, not extended)     |
+| `SIGN_IN_RATE_LIMIT`   | `10`      | Sign-in attempts per IP per 15 minutes (429 beyond)   |
+| `MAX_SESSIONS`         | `1000`    | Most sessions at once (sign-in answers 503 when full) |
+| `MAX_SESSIONS_PER_KEY` | `5`       | Most sessions per API key (the oldest is dropped)     |
+
+POST, PUT and PATCH requests must be `Content-Type: application/json` (415 otherwise).
 
 ## Testing
 
