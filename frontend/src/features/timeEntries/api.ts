@@ -32,3 +32,18 @@ export function listTaskEntries(
     `/api/tasks/${encodeURIComponent(String(taskId))}/entries?${query}`,
   )
 }
+
+export interface NewEntry {
+  comment: string
+  /** ISO 8601 */
+  start: string
+  /** ISO 8601 */
+  end: string
+}
+
+export function createTaskEntry(taskId: number, entry: NewEntry): Promise<TimeEntry> {
+  return apiFetch<TimeEntry>(`/api/tasks/${encodeURIComponent(String(taskId))}/entries`, {
+    method: 'POST',
+    body: JSON.stringify(entry),
+  })
+}

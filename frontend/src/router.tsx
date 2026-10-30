@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { AppLayout } from '@/components/AppLayout'
 import { RouteError } from '@/components/RouteError'
 import { RequireAuth } from '@/features/auth/RequireAuth'
+import { AddEntryPage } from '@/pages/AddEntryPage'
 import { HierarchyPage } from '@/pages/HierarchyPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { TaskEntriesPage } from '@/pages/TaskEntriesPage'
@@ -26,6 +27,7 @@ export const routes: RouteObject[] = [
                 element: <Navigate to="entries" replace />,
               },
               { path: '/tasks/:taskId/entries', element: <TaskEntriesPage /> },
+              { path: '/tasks/:taskId/entries/new', element: <AddEntryPage /> },
             ],
           },
         ],

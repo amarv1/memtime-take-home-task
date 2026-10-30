@@ -25,3 +25,8 @@ export function formatDuration(startIso: string, endIso: string): string {
   ].filter(Boolean)
   return parts.length > 0 ? parts.join(' ') : '0s'
 }
+
+/** The value a `datetime-local` input takes: local time, no zone, to the minute. */
+export function toDateTimeInput(date: Date): string {
+  return format(date, "yyyy-MM-dd'T'HH:mm")
+}

@@ -160,6 +160,17 @@ describe('TaskEntriesPage', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
   })
 
+  it('links to the form for adding an entry', async () => {
+    mockEntries([])
+
+    renderAt('/tasks/398/entries')
+
+    expect(await screen.findByRole('link', { name: 'Add entry' })).toHaveAttribute(
+      'href',
+      '/tasks/398/entries/new',
+    )
+  })
+
   it('rejects an invalid task id without calling the server', () => {
     const { requests } = mockEntries([])
 

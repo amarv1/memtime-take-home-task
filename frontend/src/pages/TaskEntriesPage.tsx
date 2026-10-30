@@ -1,5 +1,6 @@
+import { Plus } from 'lucide-react'
 import { useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/features/hierarchy/StatusBadge'
 import { parseTaskId, useTask } from '@/features/hierarchy/hooks'
@@ -62,6 +63,14 @@ export function TaskEntriesPage() {
           {taskId === null ? 'Task not found' : (task.data?.name ?? `Task #${taskId}`)}
         </h1>
         {task.data && <StatusBadge status={task.data.status} />}
+        {taskId !== null && (
+          <Button asChild size="sm" className="ml-auto">
+            <Link to={`/tasks/${taskId}/entries/new`}>
+              <Plus aria-hidden />
+              Add entry
+            </Link>
+          </Button>
+        )}
       </div>
       {taskId !== null && (
         <p className="mt-1 text-sm text-muted-foreground">
