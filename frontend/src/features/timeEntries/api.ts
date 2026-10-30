@@ -3,7 +3,6 @@ import { apiFetch } from '@/lib/api'
 export interface TimeEntry {
   id: number
   taskId: number
-  userId: number
   comment: string
   start: string
   end: string

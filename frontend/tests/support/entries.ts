@@ -10,7 +10,6 @@ export function buildEntry(
   return {
     id,
     taskId,
-    userId: 1,
     comment: `Entry ${id}`,
     start: '2025-01-01T09:00:00.000Z',
     end: '2025-01-01T10:05:00.000Z',
