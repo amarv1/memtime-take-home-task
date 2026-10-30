@@ -32,6 +32,7 @@ src/
   index.ts        entry point: loads env, starts listening
   env.ts          environment variables, validated with zod
   logger.ts       shared winston logger (console transport)
+  requestId.ts    per-request id, so every log line can carry it
   middleware/     error handling ({ error } responses, like the upstream API), requireSession
   sessions/       in-memory session store and the /api/session routes
   memtime/        calls to the upstream Memtime API (API key check)
@@ -67,6 +68,17 @@ Later routes use `requireSession(store)`, which puts the session on `res.locals.
 | `COOKIE_SECURE`        | `true`    | `Secure` flag on the session cookie; `false` only for local http                 |
 
 POST, PUT and PATCH requests must be `Content-Type: application/json` (415 otherwise).
+
+## Logging and errors
+
+Every response has an `X-Request-Id` header (generated per request; a client-supplied
+one is ignored). Each request logs one line (`METHOD /path status Nms`, no query
+string) and every line written while handling it, including upstream failures from
+the API key check, is tagged `[<request id>]`. 5xx lines log at `error`; `/api/health`
+logs at `debug`. To trace a user's report, ask for the `X-Request-Id` of the failed call.
+
+Errors are returned as `{ error }`. Body-parser errors keep their status (400 bad JSON,
+413 body over 100 kB, ...).
 
 ## Testing
 

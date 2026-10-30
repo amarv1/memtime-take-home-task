@@ -5,6 +5,7 @@ import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
 import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from './middleware/errorHandler.ts'
+import { requestContext, requestLogger } from './middleware/requestContext.ts'
 import { requireJson } from './middleware/requireJson.ts'
 import { signInLimiter } from './middleware/signInLimiter.ts'
 import { sessionRouter } from './sessions/sessionRouter.ts'
@@ -28,6 +29,8 @@ export function createApp({
   const app = express()
 
   app.disable('x-powered-by')
+  app.use(requestContext)
+  app.use(requestLogger)
   app.use(helmet())
   app.use(requireJson)
   app.use(express.json())

@@ -1,8 +1,9 @@
 import winston from 'winston'
+import { currentRequestId } from './requestId.ts'
 
 /**
  * Shared application logger. Console only for now; add transports here.
- * Silent under test so expected errors don't clutter the output, and the level
+ * Lines written while handling a request carry its id. Silent under test so expected errors don't clutter the output, and the level
  * is set from `LOG_LEVEL` at startup (see index.ts).
  */
 export const logger = winston.createLogger({
@@ -13,7 +14,9 @@ export const logger = winston.createLogger({
     winston.format.errors({ stack: true }),
     winston.format.printf(({ timestamp, level, message, stack }) => {
       const text = typeof stack === 'string' ? stack : String(message)
-      return `${String(timestamp)} ${level.toUpperCase()} ${text}`
+      const requestId = currentRequestId()
+      const tag = requestId ? ` [${requestId}]` : ''
+      return `${String(timestamp)} ${level.toUpperCase()}${tag} ${text}`
     }),
   ),
   transports: [new winston.transports.Console()],
