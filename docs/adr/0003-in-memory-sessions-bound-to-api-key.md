@@ -1,0 +1,28 @@
+# 0003. In-memory sessions bound to the API key
+
+- **Status:** Accepted
+- **Date:** 2026-10-30
+
+## Context
+
+Users sign in with their own Memtime API key. By [0002](0002-lightweight-server-for-api-key-security.md) the key must stay on our server, so the browser needs another way to prove who it is on later requests. There is no user database and we don't want to add one. Memtime has no login endpoint, so the only way to check a key is to use it.
+
+## Decision
+
+We will use cookie sessions that hold the key in server memory:
+
+- Signing in checks the key with one upstream call (`GET /clients?limit=1`). If it is accepted, the server creates a session `{ apiKey, expiresAt }` in memory and sets a cookie with a random session id (32 random bytes, base64url).
+- The cookie is `HttpOnly` and `SameSite=Strict`, limited to `/api`, and `Secure` in production. It never contains the key.
+- A session lasts 1 hour from sign in. The limit is absolute: activity does not extend it. Expired sessions are rejected when read and swept every minute.
+- Signing in again replaces the old session. Signing out deletes it.
+- `/api/*` routes that call Memtime use a `requireSession` middleware to get the key.
+
+We will not add a CSRF token for now. `SameSite=Strict` keeps the cookie off cross-site requests, and the API only accepts JSON.
+
+## Consequences
+
+- The key never reaches the browser, and there is no database to run.
+- Sessions are lost when the server restarts, and users sign in again.
+- It works for a single server instance only. Running several instances needs a shared store such as Redis; the session store is small and isolated so it can be swapped.
+- The key stays in memory for up to an hour, so a memory dump of the server would expose it. We accept this for now.
+- A user who changes or revokes their key is only noticed on the next upstream call, which fails with 401.
