@@ -106,7 +106,7 @@ describe('createQueryClient', () => {
 })
 
 describe('shouldRetry', () => {
-  it.each([400, 404, 429])('never retries a %i', (status) => {
+  it.each([400, 404, 429, 503])('never retries a %i', (status) => {
     expect(shouldRetry(0, new ApiError(status, 'x'))).toBe(false)
   })
 
