@@ -30,7 +30,7 @@ export function createMemtimeClient({
 
   /** `label` names the call in logs (a route pattern), so the key and the URL stay out of them. */
   async function send(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     apiKey: string,
     upstreamPath: string,
     search: string,
@@ -79,5 +79,7 @@ export function createMemtimeClient({
       send('GET', apiKey, upstreamPath, search, label),
     post: (apiKey: string, upstreamPath: string, payload: unknown, label: string) =>
       send('POST', apiKey, upstreamPath, '', label, payload),
+    put: (apiKey: string, upstreamPath: string, payload: unknown, label: string) =>
+      send('PUT', apiKey, upstreamPath, '', label, payload),
   }
 }

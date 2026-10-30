@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Cache } from '../cache/memoryCache.ts'
-import type { MemtimeClient } from '../memtime/memtimeClient.ts'
+import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 
 export interface TimeEntry {
@@ -82,6 +82,34 @@ export function createTimeEntryService({ client, cache }: Options) {
     }
   }
 
+  async function invalidate(apiKey: string): Promise<void> {
+    await cache.delete(cacheKey(apiKey))
+  }
+
+  async function saved(
+    apiKey: string,
+    { status, headers, body }: MemtimeResponse,
+    notFound: string,
+  ): Promise<TimeEntry> {
+    throwIfRateLimited(status, headers)
+    if (status === 400)
+      throw new HttpError(400, 'Memtime did not accept this time entry.')
+    if (status === 404) throw new HttpError(404, notFound)
+    if (status < 200 || status >= 300)
+      throw new HttpError(502, 'Memtime could not save the time entry.')
+
+    // The change is made upstream from here on, so the cache is stale whatever the body says.
+    await invalidate(apiKey)
+    try {
+      const entry: unknown = JSON.parse(body)
+      if (typeof entry === 'object' && entry !== null && 'id' in entry)
+        return entry as TimeEntry
+    } catch {
+      // Falls through to the error below.
+    }
+    throw new HttpError(502, 'Memtime sent an unexpected answer.')
+  }
+
   return {
     async getAllEntries(apiKey: string): Promise<TimeEntry[]> {
       const key = cacheKey(apiKey)
@@ -104,35 +132,27 @@ export function createTimeEntryService({ client, cache }: Options) {
 
     /** Creates an entry for the key's owner, then drops the cached list so the next read has it. */
     async createEntry(apiKey: string, entry: NewEntry): Promise<TimeEntry> {
-      const { status, headers, body } = await client.post(
+      const response = await client.post(
         apiKey,
         '/time-entries',
         entry,
         '/api/tasks/:taskId/entries',
       )
+      return saved(apiKey, response, 'Task not found')
+    },
 
-      throwIfRateLimited(status, headers)
-      if (status === 400)
-        throw new HttpError(400, 'Memtime did not accept this time entry.')
-      if (status === 404) throw new HttpError(404, 'Task not found')
-      if (status < 200 || status >= 300)
-        throw new HttpError(502, 'Memtime could not save the time entry.')
-
-      // The entry exists upstream from here on, so the cache is stale whatever the body says.
-      await this.invalidate(apiKey)
-      try {
-        const created: unknown = JSON.parse(body)
-        if (typeof created === 'object' && created !== null && 'id' in created)
-          return created as TimeEntry
-      } catch {
-        // Falls through to the error below.
-      }
-      throw new HttpError(502, 'Memtime sent an unexpected answer.')
+    /** Replaces an entry of the key's owner, then drops the cached list. */
+    async updateEntry(apiKey: string, id: number, entry: NewEntry): Promise<TimeEntry> {
+      const response = await client.put(
+        apiKey,
+        `/time-entries/${id}`,
+        entry,
+        '/api/tasks/:taskId/entries/:entryId',
+      )
+      return saved(apiKey, response, 'Time entry not found')
     },
 
     /** For create, update and delete of entries to call, so the next read loads fresh data. */
-    async invalidate(apiKey: string): Promise<void> {
-      await cache.delete(cacheKey(apiKey))
-    },
+    invalidate,
   }
 }

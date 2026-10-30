@@ -378,3 +378,185 @@ describe('POST /api/tasks/:taskId/entries', () => {
     expect(res.status).toBe(502)
   })
 })
+
+describe('/api/tasks/:taskId/entries/:entryId', () => {
+  const store = createSessionStore({ ttlMs: 60_000 })
+  afterAll(() => store.stop())
+
+  let app: ReturnType<typeof createApp>
+  beforeEach(() => {
+    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+  })
+
+  const cookie = () => `memtime_sid=${store.create(KEY).id}`
+  const valid = {
+    comment: 'Fix the header',
+    start: '2025-01-01T09:00:00Z',
+    end: '2025-01-01T10:00:00Z',
+  }
+  const entries = [buildEntry(0, 5), buildEntry(1, 5), buildEntry(2, 6)]
+  let put: { id: string; auth: string | null; body: unknown }[]
+  let listCalls: number
+
+  function mockUpstream(respond?: () => Response) {
+    put = []
+    listCalls = 0
+    server.use(
+      http.get(`${BASE}/time-entries`, ({ request }) => {
+        listCalls++
+        return HttpResponse.json(page(entries, new URL(request.url)))
+      }),
+      http.put(`${BASE}/time-entries/:id`, async ({ request, params }) => {
+        put.push({
+          id: String(params.id),
+          auth: request.headers.get('authorization'),
+          body: await request.json(),
+        })
+        return respond?.() ?? HttpResponse.json({ ...buildEntry(1, 5), ...valid })
+      }),
+    )
+  }
+
+  describe('GET', () => {
+    it('answers 401 without a session', async () => {
+      mockUpstream()
+      expect((await request(app).get('/api/tasks/5/entries/1')).status).toBe(401)
+    })
+
+    it('returns the entry from the cached list', async () => {
+      mockUpstream()
+
+      const res = await request(app).get('/api/tasks/5/entries/1').set('Cookie', cookie())
+      await request(app).get('/api/tasks/5/entries/1').set('Cookie', cookie())
+
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('private, no-store')
+      expect((res.body as { id: number }).id).toBe(1)
+      expect(listCalls).toBe(1)
+    })
+
+    it('returns the entry with id 0', async () => {
+      mockUpstream()
+      const res = await request(app).get('/api/tasks/5/entries/0').set('Cookie', cookie())
+      expect(res.status).toBe(200)
+      expect((res.body as { id: number }).id).toBe(0)
+    })
+
+    it.each(['/api/tasks/5/entries/2', '/api/tasks/5/entries/99'])(
+      'answers 404 for %s (another task’s or unknown)',
+      async (url) => {
+        mockUpstream()
+        const res = await request(app).get(url).set('Cookie', cookie())
+        expect(res.status).toBe(404)
+        expect(json(res).error).toBe('Time entry not found')
+      },
+    )
+
+    it('answers 400 for an invalid entry id', async () => {
+      mockUpstream()
+      const res = await request(app).get('/api/tasks/5/entries/x').set('Cookie', cookie())
+      expect(res.status).toBe(400)
+      expect(json(res).error).toBe('Invalid entry id')
+    })
+  })
+
+  describe('PUT', () => {
+    it('answers 401 without a session and puts nothing', async () => {
+      mockUpstream()
+      const res = await request(app).put('/api/tasks/5/entries/1').send(valid)
+      expect(res.status).toBe(401)
+      expect(put).toHaveLength(0)
+    })
+
+    it('updates the entry upstream, keeping it on the URL’s task', async () => {
+      mockUpstream()
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ ...valid, taskId: 999 })
+
+      expect(res.status).toBe(200)
+      expect(res.headers['cache-control']).toBe('private, no-store')
+      expect(put).toEqual([
+        {
+          id: '1',
+          auth: `Bearer ${KEY}`,
+          body: {
+            taskId: 5,
+            comment: 'Fix the header',
+            start: '2025-01-01T09:00:00.000Z',
+            end: '2025-01-01T10:00:00.000Z',
+          },
+        },
+      ])
+    })
+
+    it('makes the next read load fresh entries', async () => {
+      mockUpstream()
+      await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+      await request(app).put('/api/tasks/5/entries/1').set('Cookie', cookie()).send(valid)
+      await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+      expect(listCalls).toBe(2)
+    })
+
+    it('updates the entry with id 0', async () => {
+      mockUpstream()
+      const res = await request(app)
+        .put('/api/tasks/5/entries/0')
+        .set('Cookie', cookie())
+        .send(valid)
+      expect(res.status).toBe(200)
+      expect(put[0]?.id).toBe('0')
+    })
+
+    it.each(['/api/tasks/5/entries/2', '/api/tasks/5/entries/99'])(
+      'answers 404 for %s without calling put',
+      async (url) => {
+        mockUpstream()
+        const res = await request(app).put(url).set('Cookie', cookie()).send(valid)
+        expect(res.status).toBe(404)
+        expect(put).toHaveLength(0)
+      },
+    )
+
+    it('answers 400 for invalid input without calling upstream', async () => {
+      mockUpstream()
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ ...valid, end: valid.start })
+      expect(res.status).toBe(400)
+      expect(json(res).error).toBe('Invalid end: must be after start')
+      expect(put).toHaveLength(0)
+    })
+
+    it.each([
+      [400, 400, 'Memtime did not accept this time entry.'],
+      [404, 404, 'Time entry not found'],
+      [500, 502, 'Memtime could not save the time entry.'],
+    ])('maps upstream %i to %i', async (upstream, status, error) => {
+      mockUpstream(() => HttpResponse.json({ error: 'raw' }, { status: upstream }))
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send(valid)
+      expect(res.status).toBe(status)
+      expect(json(res).error).toBe(error)
+    })
+
+    it('passes a rate limit on with its Retry-After', async () => {
+      mockUpstream(() =>
+        HttpResponse.json({}, { status: 429, headers: { 'Retry-After': '30' } }),
+      )
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send(valid)
+      expect(res.status).toBe(429)
+      expect(res.headers['retry-after']).toBe('30')
+    })
+  })
+})
