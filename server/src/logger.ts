@@ -12,12 +12,12 @@ export const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.printf(({ timestamp, level, message, stack }) => {
-      const text = typeof stack === 'string' ? stack : String(message)
+    winston.format((info) => {
       const requestId = currentRequestId()
-      const tag = requestId ? ` [${requestId}]` : ''
-      return `${String(timestamp)} ${level.toUpperCase()}${tag} ${text}`
-    }),
+      if (requestId) info.requestId = requestId
+      return info
+    })(),
+    winston.format.json(),
   ),
   transports: [new winston.transports.Console()],
 })
