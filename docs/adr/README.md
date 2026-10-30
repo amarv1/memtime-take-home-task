@@ -15,6 +15,7 @@ New decisions get a new file. If a decision changes, add a new ADR that supersed
 | [0006](0006-time-entries-filtered-and-cached-on-server.md) | Time entries filtered and cached on the server | Accepted |
 | [0007](0007-time-entry-rules-on-the-server.md)             | Time entry rules on the server                 | Accepted |
 | [0008](0008-memtime-circuit-breaker-and-readiness.md)      | Memtime circuit breaker and readiness          | Accepted |
+| [0009](0009-memtime-rate-limit-budget.md)                  | Memtime rate-limit budget                      | Accepted |
 
 ## Writing a new ADR
 
