@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
-import { indent, rowClass } from './rowStyle'
+import { indent, rowClass, selectedRowClass } from './rowStyle'
 import { useTree } from './treeContext'
 
 interface Props {
@@ -15,6 +15,9 @@ interface Props {
   childrenQueryKey?: readonly unknown[]
   /** Children are only rendered while expanded, so that is also when they are fetched. */
   children?: ReactNode
+  /** Only for selectable items (tasks). Sets `aria-selected`. */
+  selected?: boolean
+  onSelect?: () => void
 }
 
 /** One client, project or task. Items with `children` can be expanded. */
@@ -25,30 +28,36 @@ export function TreeItem({
   details,
   childrenQueryKey,
   children,
+  selected,
+  onSelect,
 }: Props) {
-  const { tabKey, isExpanded, toggle } = useTree()
+  const { tabKey, isExpanded, toggle, onSelectedRow } = useTree()
   const nameId = useId()
   const fetching = useIsFetching({ queryKey: childrenQueryKey ?? [nodeKey] })
   const expandable = children !== undefined
   const expanded = expandable && isExpanded(nodeKey)
 
   return (
-    // `aria-selected` is optional in the APG tree pattern; nothing here is selectable.
+    // Enter and Space reach `onSelect` as a click: the tree's key handler calls `click()`.
+    // `aria-selected` is set on tasks only; clients and projects use `aria-expanded`.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events
     <li
-      // eslint-disable-next-line jsx-a11y/role-has-required-aria-props
+      ref={selected ? (element) => onSelectedRow(element, nodeKey) : undefined}
       role="treeitem"
       aria-level={level}
       aria-expanded={expandable ? expanded : undefined}
+      aria-selected={selected}
       aria-busy={expanded && childrenQueryKey && fetching > 0 ? true : undefined}
       aria-labelledby={nameId}
       tabIndex={nodeKey === tabKey ? 0 : -1}
       data-node-key={nodeKey}
       className="group/item outline-none"
+      onClick={onSelect}
     >
       {/* Keyboard users toggle through the tree's own key handler (Enter, Space, arrows). */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
-        className={rowClass}
+        className={cn(rowClass, selected && selectedRowClass)}
         style={indent(level)}
         onClick={expandable ? () => toggle(nodeKey) : undefined}
       >

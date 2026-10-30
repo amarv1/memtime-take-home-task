@@ -1,8 +1,10 @@
 import { screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import { Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HierarchyTree } from '@/features/hierarchy/HierarchyTree'
 import { sessionQueryKey } from '@/features/auth/hooks'
 import {
+  buildTask,
   hierarchyFixture,
   manyClients,
   manyProjects,
@@ -10,6 +12,7 @@ import {
 } from '../../fixtures/hierarchy'
 import { mockHierarchy } from '../../support/hierarchy'
 import { server } from '../../support/server'
+import { scrollIntoView } from '../../support/setup'
 import { renderWithProviders } from '../../support/utils'
 
 const CLIENTS_REQUEST = '/api/clients?limit=100&offset=0'
@@ -26,6 +29,35 @@ async function setup(data = hierarchyFixture) {
 /** Clicking the name is what a user does; the row handles the click. */
 const toggle = (user: { click: (el: Element) => Promise<void> }, name: string) =>
   user.click(screen.getByText(name))
+
+/** Shows where the router is, and gives tests a way to go back. */
+function Location() {
+  const navigate = useNavigate()
+  return (
+    <>
+      <p data-testid="location">{useLocation().pathname}</p>
+      <button onClick={() => void navigate(-1)}>Back</button>
+    </>
+  )
+}
+
+/** The tree at a route, the way the app mounts it. */
+function renderAt(route: string) {
+  return renderWithProviders(
+    <>
+      <Routes>
+        <Route path="/tasks/:taskId" element={<HierarchyTree />} />
+        <Route path="/" element={<HierarchyTree />} />
+      </Routes>
+      <Location />
+    </>,
+    { route },
+  )
+}
+
+const pathname = () => screen.getByTestId('location').textContent
+const taskRequests = (requests: string[]) =>
+  requests.filter((r) => /^\/api\/(tasks|projects)\/\d+$/.test(r))
 
 const tabStops = () =>
   screen.getAllByRole('treeitem').filter((el) => el.getAttribute('tabindex') === '0')
@@ -486,6 +518,259 @@ describe('HierarchyTree', () => {
       fireEvent.click(screen.getByText('Acme Corp'))
 
       await waitFor(() => expect(tabStops()).toEqual([item('Acme Corp')]))
+    })
+  })
+
+  describe('selecting a task', () => {
+    function mockedRender() {
+      const { requests } = mockHierarchy()
+      return { requests, ...renderAt('/') }
+    }
+
+    async function openTasks() {
+      const { requests, user } = mockedRender()
+      await screen.findByRole('treeitem', { name: 'Acme Corp' })
+      await toggle(user, 'Acme Corp')
+      await screen.findByRole('treeitem', { name: 'Website' })
+      await toggle(user, 'Website')
+      await screen.findByRole('treeitem', { name: 'Ship it' })
+      return { requests, user }
+    }
+
+    it('puts the task in the URL and marks only it selected, without extra requests', async () => {
+      const { requests, user } = await openTasks()
+      const before = [...requests]
+
+      await user.click(screen.getByText('Write copy'))
+
+      expect(pathname()).toBe('/tasks/399')
+      expect(item('Write copy')).toHaveAttribute('aria-selected', 'true')
+      expect(item('Design homepage')).toHaveAttribute('aria-selected', 'false')
+      expect(item('Ship it')).toHaveAttribute('aria-selected', 'false')
+      expect(item('Write copy')).toHaveFocus()
+      expect(requests).toEqual(before)
+    })
+
+    it('leaves clients and projects without aria-selected', async () => {
+      await openTasks()
+
+      expect(item('Acme Corp')).not.toHaveAttribute('aria-selected')
+      expect(item('Website')).not.toHaveAttribute('aria-selected')
+    })
+
+    it.each([
+      ['Enter', '{Enter}'],
+      ['Space', ' '],
+    ])('selects the focused task with %s', async (_name, keys) => {
+      const { user } = await openTasks()
+      item('Ship it').focus()
+
+      await user.keyboard(keys)
+
+      expect(pathname()).toBe('/tasks/400')
+      expect(item('Ship it')).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('does not add a history entry when the selected task is clicked again', async () => {
+      const { user } = await openTasks()
+
+      await user.click(screen.getByText('Write copy'))
+      await user.click(screen.getByText('Write copy'))
+      await user.click(screen.getByRole('button', { name: 'Back' }))
+
+      expect(pathname()).toBe('/')
+      expect(item('Write copy')).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('follows history between tasks', async () => {
+      const { requests, user } = await openTasks()
+      await user.click(screen.getByText('Write copy'))
+      await user.click(screen.getByText('Ship it'))
+
+      await user.click(screen.getByRole('button', { name: 'Back' }))
+
+      expect(pathname()).toBe('/tasks/399')
+      expect(item('Write copy')).toHaveAttribute('aria-selected', 'true')
+      expect(item('Ship it')).toHaveAttribute('aria-selected', 'false')
+      expect(taskRequests(requests)).toEqual([])
+    })
+
+    it('keeps the tree as it was when the route changes', async () => {
+      const { user } = await openTasks()
+
+      await user.click(screen.getByText('Write copy'))
+      await user.click(screen.getByRole('button', { name: 'Back' }))
+
+      expect(item('Acme Corp')).toHaveAttribute('aria-expanded', 'true')
+      expect(item('Website')).toHaveAttribute('aria-expanded', 'true')
+      expect(item('Write copy')).toBeInTheDocument()
+    })
+  })
+
+  describe('opening a task link', () => {
+    const PROJECTS = '/api/clients/1/projects?limit=100&offset=0'
+    const TASKS = '/api/projects/101/tasks?limit=100&offset=0'
+
+    it('expands the path and selects the task with the minimum of requests', async () => {
+      const { requests } = mockHierarchy()
+      renderAt('/tasks/399')
+
+      const task = await screen.findByRole('treeitem', { name: 'Write copy' })
+
+      expect(item('Acme Corp')).toHaveAttribute('aria-expanded', 'true')
+      expect(item('Website')).toHaveAttribute('aria-expanded', 'true')
+      expect(task).toHaveAttribute('aria-selected', 'true')
+      expect(item('Ship it')).toHaveAttribute('aria-selected', 'false')
+      // The clients list and the task lookup start together; the rest follows from them.
+      expect(requests).toHaveLength(5)
+      expect(requests.slice(0, 2).sort()).toEqual([CLIENTS_REQUEST, '/api/tasks/399'])
+      expect(requests.slice(2)).toEqual(['/api/projects/101', PROJECTS, TASKS])
+    })
+
+    it('says it is opening the task while the path resolves', async () => {
+      mockHierarchy()
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => (release = resolve))
+      server.use(
+        http.get('/api/projects/101', async () => {
+          await gate
+          return HttpResponse.json(hierarchyFixture.projectsByClient[1]?.[0])
+        }),
+      )
+      renderAt('/tasks/399')
+
+      await waitFor(() =>
+        expect(screen.getByRole('status')).toHaveTextContent('Opening task #399…'),
+      )
+      expect(screen.getByRole('tree')).toBeInTheDocument()
+
+      release()
+      await screen.findByRole('treeitem', { name: 'Write copy' })
+      expect(screen.queryByRole('status')).toBeNull()
+    })
+
+    it('makes the task the tab stop and scrolls to it without moving focus', async () => {
+      mockHierarchy()
+      renderAt('/tasks/399')
+
+      const task = await screen.findByRole('treeitem', { name: 'Write copy' })
+
+      await waitFor(() => expect(tabStops()).toEqual([task]))
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+      expect(task).not.toHaveFocus()
+    })
+
+    it('loads further pages until the client, project and task are found', async () => {
+      const { requests } = mockHierarchy({
+        clients: manyClients(150),
+        projectsByClient: { 120: manyProjects(120, 150) },
+        tasksByProject: { 1130: manyTasks(1130, 150) },
+      })
+      renderAt('/tasks/5120')
+
+      const task = await screen.findByRole('treeitem', {
+        name: 'Task 5120 for Project 1130',
+      })
+
+      expect(task).toHaveAttribute('aria-selected', 'true')
+      expect(requests).toEqual(
+        expect.arrayContaining([
+          '/api/clients?limit=100&offset=100',
+          '/api/clients/120/projects?limit=100&offset=100',
+          '/api/projects/1130/tasks?limit=100&offset=100',
+        ]),
+      )
+    })
+
+    it('does not open the client again once the user collapsed it', async () => {
+      const { requests } = mockHierarchy()
+      const { user } = renderAt('/tasks/399')
+      await screen.findByRole('treeitem', { name: 'Write copy' })
+      const before = requests.length
+
+      await toggle(user, 'Acme Corp')
+
+      expect(item('Acme Corp')).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('treeitem', { name: 'Write copy' })).toBeNull()
+      expect(requests).toHaveLength(before)
+    })
+
+    it('stops at the project when the task is not in its list', async () => {
+      const { requests } = mockHierarchy()
+      server.use(http.get('/api/tasks/777', () => HttpResponse.json(buildTask(777, 102))))
+      renderAt('/tasks/777')
+
+      expect(
+        await screen.findByRole('treeitem', { name: 'No tasks' }),
+      ).toBeInTheDocument()
+
+      expect(item('Branding')).toHaveAttribute('aria-expanded', 'true')
+      expect(
+        requests.filter((r) => r.startsWith('/api/projects/102/tasks')),
+      ).toHaveLength(1)
+    })
+
+    it('shows an alert for an unknown task, and clearing goes home', async () => {
+      const { requests } = mockHierarchy()
+      const { user } = renderAt('/tasks/9999')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "Task #9999 wasn't found.",
+      )
+      expect(screen.getByRole('tree')).toBeInTheDocument()
+      expect(requests).toEqual([CLIENTS_REQUEST, '/api/tasks/9999'])
+
+      await user.click(screen.getByRole('button', { name: 'Clear selection' }))
+
+      expect(pathname()).toBe('/')
+      expect(screen.queryByRole('alert')).toBeNull()
+    })
+
+    it("shows an alert when the task's project is gone", async () => {
+      mockHierarchy()
+      server.use(http.get('/api/tasks/55', () => HttpResponse.json(buildTask(55, 999))))
+      renderAt('/tasks/55')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "Couldn't find the project for task #55.",
+      )
+      expect(screen.getByRole('button', { name: 'Clear selection' })).toBeInTheDocument()
+    })
+
+    it.each(['abc', '0', '007'])(
+      'shows an alert for the invalid id %s without asking the API',
+      async (id) => {
+        const { requests } = mockHierarchy()
+        renderAt(`/tasks/${id}`)
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          "That task link isn't valid.",
+        )
+        expect(requests).toEqual([CLIENTS_REQUEST])
+      },
+    )
+
+    it('offers a retry when the lookup fails, and opens the task after it', async () => {
+      mockHierarchy()
+      server.use(
+        http.get('/api/tasks/399', () =>
+          HttpResponse.json({ error: 'boom' }, { status: 500 }),
+        ),
+      )
+      const { user } = renderAt('/tasks/399')
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "Couldn't open task #399. boom",
+      )
+
+      mockHierarchy()
+      await user.click(screen.getByRole('button', { name: 'Try again' }))
+
+      expect(await screen.findByRole('treeitem', { name: 'Write copy' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
+      expect(screen.queryByRole('alert')).toBeNull()
     })
   })
 

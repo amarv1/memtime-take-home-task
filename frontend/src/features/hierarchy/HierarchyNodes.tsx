@@ -3,7 +3,7 @@ import type { Client, Project, Task } from './api'
 import { NodeList } from './NodeList'
 import { StatusBadge } from './StatusBadge'
 import { TreeItem } from './TreeItem'
-import { childKey } from './treeContext'
+import { childKey, useTree } from './treeContext'
 
 export function ClientItem({ client }: { client: Client }) {
   const nodeKey = `client:${client.id}`
@@ -23,9 +23,11 @@ export function ClientItem({ client }: { client: Client }) {
 // Mounted only while the client is expanded, which is what makes the fetch lazy.
 function ProjectRows({ clientId, parentKey }: { clientId: number; parentKey: string }) {
   const query = useProjects(clientId)
+  const { target } = useTree()
   return (
     <NodeList
       query={query}
+      targetId={target?.clientId === clientId ? target.projectId : undefined}
       level={2}
       parentKey={parentKey}
       noun="projects"
@@ -56,9 +58,11 @@ function ProjectItem({ project, nodeKey }: { project: Project; nodeKey: string }
 
 function TaskRows({ projectId, parentKey }: { projectId: number; parentKey: string }) {
   const query = useTasks(projectId)
+  const { target } = useTree()
   return (
     <NodeList
       query={query}
+      targetId={target?.projectId === projectId ? target.taskId : undefined}
       level={3}
       parentKey={parentKey}
       noun="tasks"
@@ -74,11 +78,14 @@ function TaskRows({ projectId, parentKey }: { projectId: number; parentKey: stri
 }
 
 function TaskItem({ task, nodeKey }: { task: Task; nodeKey: string }) {
+  const { selectedTaskId, selectTask } = useTree()
   return (
     <TreeItem
       level={3}
       nodeKey={nodeKey}
       name={task.name}
+      selected={selectedTaskId === task.id}
+      onSelect={() => selectTask(task.id)}
       details={
         <>
           <span className="shrink-0 text-xs text-muted-foreground">#{task.id}</span>

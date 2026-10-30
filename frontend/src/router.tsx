@@ -17,7 +17,10 @@ export const routes: RouteObject[] = [
         children: [
           {
             element: <AppLayout />,
-            children: [{ path: '/', element: <HierarchyPage /> }],
+            children: [
+              { path: '/', element: <HierarchyPage /> },
+              { path: '/tasks/:taskId', element: <HierarchyPage /> },
+            ],
           },
         ],
       },

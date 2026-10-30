@@ -58,4 +58,25 @@ describe('routes', () => {
     expect(await screen.findByRole('button', { name: 'Sign out' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/')
   })
+
+  it('opens a task link on the hierarchy page instead of redirecting home', async () => {
+    mockHierarchy()
+    server.use(
+      http.get('/api/session', () =>
+        HttpResponse.json({ expiresAt: '2030-01-01T00:00:00.000Z' }),
+      ),
+    )
+    const router = createMemoryRouter(routes, { initialEntries: ['/tasks/399'] })
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByRole('treeitem', { name: 'Write copy' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(router.state.location.pathname).toBe('/tasks/399')
+  })
 })

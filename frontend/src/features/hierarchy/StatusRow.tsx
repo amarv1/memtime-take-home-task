@@ -23,7 +23,7 @@ export function StatusRow({ level, nodeKey, onActivate, disabled, children }: Pr
 
   return (
     // The keyboard handler lives on the tree root, which calls `click()` for Enter and Space.
-    // `aria-selected` is optional in the APG tree pattern; nothing here is selectable.
+    // `aria-selected` is optional in the APG tree pattern; only tasks are selectable.
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events
     <li
       // eslint-disable-next-line jsx-a11y/role-has-required-aria-props

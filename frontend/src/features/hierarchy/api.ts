@@ -47,3 +47,11 @@ export function listProjects(clientId: number, offset: number): Promise<Project[
 export function listTasks(projectId: number, offset: number): Promise<Task[]> {
   return apiFetch<Task[]>(`/api/projects/${id(projectId)}/tasks?${page(offset)}`)
 }
+
+export function getProject(projectId: number): Promise<Project> {
+  return apiFetch<Project>(`/api/projects/${id(projectId)}`)
+}
+
+export function getTask(taskId: number): Promise<Task> {
+  return apiFetch<Task>(`/api/tasks/${id(taskId)}`)
+}

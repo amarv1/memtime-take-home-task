@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { Spinner, StatusRow } from './StatusRow'
 import { childKey } from './treeContext'
 
@@ -22,6 +22,8 @@ interface Props<T> {
   /** Plural noun used in messages, e.g. "projects". */
   noun: string
   render: (item: T) => ReactNode
+  /** An item to bring into view: further pages load until it is in the list. */
+  targetId?: number
 }
 
 /** The rows of one level: its items, then whatever state the query is in. */
@@ -31,8 +33,19 @@ export function NodeList<T extends { id: number }>({
   parentKey,
   noun,
   render,
+  targetId,
 }: Props<T>) {
   const { data, isPending, isError, error, isFetchNextPageError } = query
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
+  const missing = targetId !== undefined && !data?.some((item) => item.id === targetId)
+
+  // Stops when the item shows up, the pages run out, or a page fails (the error row takes over).
+  useEffect(() => {
+    if (missing && hasNextPage && !isFetchingNextPage && !isError) {
+      void fetchNextPage()
+    }
+  }, [missing, hasNextPage, isFetchingNextPage, isError, fetchNextPage])
+
   const key = (segment: string) => childKey(parentKey, `status:${segment}`)
 
   if (isPending) {

@@ -5,6 +5,19 @@ export interface TreeState {
   tabKey: string
   isExpanded: (key: string) => boolean
   toggle: (key: string) => void
+  /** The task named by the URL, or null. */
+  selectedTaskId: number | null
+  selectTask: (taskId: number) => void
+  /** Where the selected task lives, once known. Lists page forward until they hold it. */
+  target: TreeTarget | null
+  /** Called with the selected task's row each time it renders. */
+  onSelectedRow: (element: HTMLElement | null, key: string) => void
+}
+
+export interface TreeTarget {
+  clientId: number
+  projectId: number
+  taskId: number
 }
 
 export const TreeContext = createContext<TreeState | null>(null)

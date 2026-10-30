@@ -1,6 +1,13 @@
 import { http, HttpResponse } from 'msw'
 import { server } from '../../support/server'
-import { listClients, listProjects, listTasks, PAGE_SIZE } from '@/features/hierarchy/api'
+import {
+  getProject,
+  getTask,
+  listClients,
+  listProjects,
+  listTasks,
+  PAGE_SIZE,
+} from '@/features/hierarchy/api'
 import { buildClient, buildProject, buildTask } from '../../fixtures/hierarchy'
 
 function capture(path: string, body: object, status = 200) {
@@ -42,6 +49,22 @@ describe('hierarchy api', () => {
 
     await expect(listTasks(101, 100)).resolves.toEqual(tasks)
     expect(seen).toEqual(['/api/projects/101/tasks?limit=100&offset=100'])
+  })
+
+  it('getTask requests one task', async () => {
+    const task = buildTask(398, 101)
+    const seen = capture('/api/tasks/398', task)
+
+    await expect(getTask(398)).resolves.toEqual(task)
+    expect(seen).toEqual(['/api/tasks/398'])
+  })
+
+  it('getProject requests one project', async () => {
+    const project = buildProject(101, 7)
+    const seen = capture('/api/projects/101', project)
+
+    await expect(getProject(101)).resolves.toEqual(project)
+    expect(seen).toEqual(['/api/projects/101'])
   })
 
   it.each([

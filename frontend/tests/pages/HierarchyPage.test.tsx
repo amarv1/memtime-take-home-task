@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import { Route, Routes } from 'react-router'
 import { mockHierarchy } from '../support/hierarchy'
 import { renderWithProviders } from '../support/utils'
 import { HierarchyPage } from '@/pages/HierarchyPage'
@@ -15,5 +16,18 @@ describe('HierarchyPage', () => {
     expect(screen.getByText(/expand a client to see its projects/i)).toBeInTheDocument()
     expect(await screen.findByRole('tree')).toBeInTheDocument()
     expect(document.title).toBe('Clients · Memtime')
+  })
+
+  it('titles the page with the selected task', async () => {
+    mockHierarchy()
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/tasks/:taskId" element={<HierarchyPage />} />
+      </Routes>,
+      { route: '/tasks/398' },
+    )
+
+    await waitFor(() => expect(document.title).toBe('Design homepage · Memtime'))
   })
 })
