@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { hashApiKey } from '../cache/hashApiKey.ts'
 import type { Cache } from '../cache/memoryCache.ts'
 import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
@@ -29,7 +29,7 @@ interface Options {
 // The largest page the API serves. A shorter page is the last one.
 const PAGE_SIZE = 100
 
-function throwIfRateLimited(status: number, headers: Headers) {
+export function throwIfRateLimited(status: number, headers: Headers) {
   if (status !== 429) return
   const retryAfter = headers.get('retry-after')
   throw new HttpError(
@@ -39,8 +39,7 @@ function throwIfRateLimited(status: number, headers: Headers) {
   )
 }
 
-// Entries belong to the key's owner, so the key (hashed, never stored raw) is the cache key.
-const cacheKey = (apiKey: string) => createHash('sha256').update(apiKey).digest('hex')
+const cacheKey = hashApiKey
 
 export interface NewEntry {
   taskId: number

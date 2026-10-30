@@ -21,6 +21,15 @@ describe('errorHandler', () => {
     expect(res.body).toEqual({ error: 'Conflict' })
   })
 
+  it('adds the details of an HttpError to the body', async () => {
+    const error = new HttpError(409, 'Confirm', undefined, { warnings: [{ code: 'x' }] })
+
+    const res = await request(appThatThrows(error)).post('/test')
+
+    expect(res.status).toBe(409)
+    expect(res.body).toEqual({ error: 'Confirm', warnings: [{ code: 'x' }] })
+  })
+
   it('sets the extra headers of an HttpError', async () => {
     const error = new HttpError(429, 'Slow down', { 'Retry-After': '30' })
 

@@ -6,12 +6,20 @@ export class HttpError extends Error {
   readonly status: number
   /** Extra response headers, such as `Retry-After`. */
   readonly headers?: Record<string, string>
+  /** Extra fields for the response body, next to `error`. */
+  readonly details?: Record<string, unknown>
 
-  constructor(status: number, message: string, headers?: Record<string, string>) {
+  constructor(
+    status: number,
+    message: string,
+    headers?: Record<string, string>,
+    details?: Record<string, unknown>,
+  ) {
     super(message)
     this.name = 'HttpError'
     this.status = status
     this.headers = headers
+    this.details = details
   }
 }
 
@@ -20,11 +28,11 @@ export const notFound: RequestHandler = (_req, _res, next) => {
   next(new HttpError(404, 'Not found'))
 }
 
-/** Sends every error as `{ error }`, matching the upstream API's error shape. */
+/** Sends every error as `{ error }`, matching the upstream API's error shape, plus any `details`. */
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof HttpError) {
     if (err.headers) res.set(err.headers)
-    res.status(err.status).json({ error: err.message })
+    res.status(err.status).json({ error: err.message, ...err.details })
     return
   }
 

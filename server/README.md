@@ -36,6 +36,7 @@ src/
   middleware/     error handling, sessions, request ids
   sessions/       session store and the /api/session routes
   memtime/        calls to the upstream Memtime API
+  timeEntries/    time entry routes, rules and caching
 ```
 
 ## Testing

@@ -14,6 +14,9 @@ import { signInLimiter } from './middleware/signInLimiter.ts'
 import { sessionRouter } from './sessions/sessionRouter.ts'
 import { createSessionStore } from './sessions/sessionStore.ts'
 import type { SessionStore } from './sessions/sessionStore.ts'
+import { createEntryChecks } from './timeEntries/entryChecks.ts'
+import { createTaskLookup } from './timeEntries/taskLookup.ts'
+import type { TaskLookup } from './timeEntries/taskLookup.ts'
 import { timeEntryRouter } from './timeEntries/timeEntryRouter.ts'
 import { createTimeEntryService } from './timeEntries/timeEntryService.ts'
 import type { TimeEntry, TimeEntryService } from './timeEntries/timeEntryService.ts'
@@ -22,6 +25,7 @@ interface Options {
   env?: Env
   sessionStore?: SessionStore
   timeEntryService?: TimeEntryService
+  taskLookup?: TaskLookup
 }
 
 /** Builds the Express app. Kept separate from `listen` so tests can use it directly. */
@@ -38,6 +42,13 @@ export function createApp({
     cache: createMemoryCache<TimeEntry[]>({
       ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
       maxEntries: 100,
+    }),
+  }),
+  taskLookup = createTaskLookup({
+    client: createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL }),
+    cache: createMemoryCache<string>({
+      ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
+      maxEntries: 1000,
     }),
   }),
 }: Options = {}) {
@@ -66,7 +77,14 @@ export function createApp({
     }),
   )
 
-  app.use('/api', timeEntryRouter({ store: sessionStore, service: timeEntryService }))
+  app.use(
+    '/api',
+    timeEntryRouter({
+      store: sessionStore,
+      service: timeEntryService,
+      checks: createEntryChecks({ service: timeEntryService, taskLookup }),
+    }),
+  )
 
   app.use(
     '/api',

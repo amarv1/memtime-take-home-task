@@ -202,6 +202,10 @@ describe('GET /api/tasks/:taskId/entries', () => {
   })
 })
 
+const HOUR = 3_600_000
+/** An ISO time this many hours before now. The rules compare with the real clock. */
+const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR).toISOString()
+
 describe('POST /api/tasks/:taskId/entries', () => {
   const store = createSessionStore({ ttlMs: 60_000 })
   afterAll(() => store.stop())
@@ -212,21 +216,27 @@ describe('POST /api/tasks/:taskId/entries', () => {
   })
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`
-  const valid = {
-    comment: 'Fix the header',
-    start: '2025-01-01T09:00:00Z',
-    end: '2025-01-01T10:00:00+00:00',
-  }
+  const valid = { comment: 'Fix the header', start: hoursAgo(3), end: hoursAgo(2) }
   let posted: unknown[]
   let listCalls: number
+  let taskCalls: number
 
-  function mockUpstream(respond?: () => Response) {
+  function mockUpstream(
+    respond?: () => Response,
+    options: { entries?: ReturnType<typeof buildEntry>[]; taskStatus?: string } = {},
+  ) {
+    const { entries = [], taskStatus = 'active' } = options
     posted = []
     listCalls = 0
+    taskCalls = 0
     server.use(
       http.get(`${BASE}/time-entries`, ({ request }) => {
         listCalls++
-        return HttpResponse.json(page([], new URL(request.url)))
+        return HttpResponse.json(page(entries, new URL(request.url)))
+      }),
+      http.get(`${BASE}/tasks/:id`, ({ params }) => {
+        taskCalls++
+        return HttpResponse.json({ id: Number(params.id), status: taskStatus })
       }),
       http.post(`${BASE}/time-entries`, async ({ request }) => {
         posted.push({
@@ -244,6 +254,9 @@ describe('POST /api/tasks/:taskId/entries', () => {
     )
   }
 
+  const create = (body: object) =>
+    request(app).post('/api/tasks/5/entries').set('Cookie', cookie()).send(body)
+
   it('answers 401 without a session and posts nothing', async () => {
     mockUpstream()
 
@@ -256,10 +269,12 @@ describe('POST /api/tasks/:taskId/entries', () => {
   it('creates the entry upstream for the task in the URL and answers 201', async () => {
     mockUpstream()
 
-    const res = await request(app)
-      .post('/api/tasks/5/entries')
-      .set('Cookie', cookie())
-      .send({ ...valid, taskId: 999, userId: 3 })
+    const res = await create({
+      ...valid,
+      comment: ' Fix the header ',
+      taskId: 999,
+      userId: 3,
+    })
 
     expect(res.status).toBe(201)
     expect(res.headers['cache-control']).toBe('private, no-store')
@@ -270,17 +285,32 @@ describe('POST /api/tasks/:taskId/entries', () => {
         auth: `Bearer ${KEY}`,
         taskId: 5,
         comment: 'Fix the header',
-        start: '2025-01-01T09:00:00.000Z',
-        end: '2025-01-01T10:00:00.000Z',
+        start: valid.start,
+        end: valid.end,
       },
     ])
+  })
+
+  it('sends times as exact UTC instants, keeping seconds and milliseconds', async () => {
+    mockUpstream()
+    const start = new Date(Date.now() - 3 * HOUR)
+    start.setMilliseconds(123)
+    const end = new Date(start.getTime() + HOUR)
+
+    await create({
+      ...valid,
+      start: start.toISOString().replace('Z', '+00:00'),
+      end: end.toISOString(),
+    })
+
+    expect(posted).toMatchObject([{ start: start.toISOString(), end: end.toISOString() }])
   })
 
   it('makes the next read load fresh entries', async () => {
     mockUpstream()
     await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
-    await request(app).post('/api/tasks/5/entries').set('Cookie', cookie()).send(valid)
+    await create(valid)
     await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
 
     expect(listCalls).toBe(2)
@@ -292,39 +322,77 @@ describe('POST /api/tasks/:taskId/entries', () => {
       { ...valid, comment: undefined },
       'Invalid comment: is required',
     ],
-    ['a blank comment', { ...valid, comment: '   ' }, 'Invalid comment: is required'],
-    [
-      'a long comment',
-      { ...valid, comment: 'x'.repeat(1001) },
-      'Invalid comment: must be at most 1000 characters',
-    ],
     ['a missing start', { ...valid, start: undefined }, 'Invalid start: is required'],
     [
-      'a start that is not a date',
-      { ...valid, start: 'tomorrow' },
-      'Invalid start: must be an ISO 8601 date and time',
-    ],
-    [
-      'an end without a time zone',
-      { ...valid, end: '2025-01-01T10:00:00' },
-      'Invalid end: must be an ISO 8601 date and time',
-    ],
-    [
-      'an end before the start',
-      { ...valid, end: valid.start },
-      'Invalid end: must be after start',
+      'accepted warnings that are not a list',
+      { ...valid, acceptedWarnings: 'overlap' },
+      'Invalid acceptedWarnings: must be a list',
     ],
   ])('answers 400 for %s without calling upstream', async (_name, body, error) => {
     mockUpstream()
 
-    const res = await request(app)
-      .post('/api/tasks/5/entries')
-      .set('Cookie', cookie())
-      .send(body)
+    const res = await create(body)
 
     expect(res.status).toBe(400)
     expect(json(res).error).toBe(error)
     expect(posted).toHaveLength(0)
+    expect(listCalls + taskCalls).toBe(0)
+  })
+
+  it.each([
+    ['a blank comment', { ...valid, comment: '   ' }, 'comment_required', 'comment'],
+    [
+      'a long comment',
+      { ...valid, comment: 'x'.repeat(501) },
+      'comment_too_long',
+      'comment',
+    ],
+    [
+      'a start that is not a date',
+      { ...valid, start: 'tomorrow' },
+      'invalid_start',
+      'start',
+    ],
+    [
+      'an end without a time zone',
+      { ...valid, end: '2025-01-01T10:00:00' },
+      'invalid_end',
+      'end',
+    ],
+    [
+      'an end equal to the start',
+      { ...valid, end: valid.start },
+      'end_not_after_start',
+      'end',
+    ],
+    [
+      'an entry over 24 hours',
+      { ...valid, start: hoursAgo(30), end: hoursAgo(5) },
+      'too_long',
+      'end',
+    ],
+    [
+      'an end in the future',
+      { ...valid, start: hoursAgo(1), end: hoursAgo(-1) },
+      'in_future',
+      'end',
+    ],
+    [
+      'a start before the year 2000',
+      { ...valid, start: '1999-12-31T22:00:00Z', end: '1999-12-31T23:00:00Z' },
+      'too_early',
+      'start',
+    ],
+  ])('answers 400 for %s without calling upstream', async (_name, body, code, field) => {
+    mockUpstream()
+
+    const res = await create(body)
+
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({ code, field })
+    expect(json(res).error).toEqual(expect.any(String))
+    expect(posted).toHaveLength(0)
+    expect(listCalls + taskCalls).toBe(0)
   })
 
   it('answers 400 for an invalid task id', async () => {
@@ -339,6 +407,116 @@ describe('POST /api/tasks/:taskId/entries', () => {
     expect(json(res).error).toBe('Invalid task id')
   })
 
+  describe('warnings', () => {
+    // Another task's entry that shares the hour with `valid`.
+    const clash = buildEntry(9, 6, { start: hoursAgo(3.5), end: hoursAgo(2.5) })
+
+    it('answers 409 with the overlapping entries, even on another task, and posts nothing', async () => {
+      mockUpstream(undefined, { entries: [clash] })
+
+      const res = await create(valid)
+
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({
+        error: 'Please confirm this time entry',
+        warnings: [
+          {
+            code: 'overlap',
+            entries: [{ id: 9, taskId: 6, start: clash.start, end: clash.end }],
+          },
+        ],
+      })
+      expect(JSON.stringify(res.body)).not.toContain('userId')
+      expect(posted).toHaveLength(0)
+    })
+
+    it('creates the entry once the warning is accepted', async () => {
+      mockUpstream(undefined, { entries: [clash] })
+
+      const res = await create({ ...valid, acceptedWarnings: ['overlap'] })
+
+      expect(res.status).toBe(201)
+      expect(posted).toHaveLength(1)
+    })
+
+    it('answers 409 again for the warnings that are not accepted yet', async () => {
+      mockUpstream(undefined, { entries: [clash], taskStatus: 'completed' })
+
+      const res = await create({ ...valid, acceptedWarnings: ['overlap'] })
+
+      expect(res.status).toBe(409)
+      expect((res.body as { warnings: { code: string }[] }).warnings).toEqual([
+        expect.objectContaining({ code: 'completed_task' }),
+      ])
+      expect(posted).toHaveLength(0)
+    })
+
+    it('answers 409 for a completed task', async () => {
+      mockUpstream(undefined, { taskStatus: 'completed' })
+
+      const res = await create(valid)
+
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({ warnings: [{ code: 'completed_task' }] })
+    })
+
+    it.each([
+      ['a long entry', { start: hoursAgo(14), end: hoursAgo(1) }, 'long_duration'],
+      [
+        'an old start',
+        { start: hoursAgo(24 * 31), end: hoursAgo(24 * 31 - 1) },
+        'old_start',
+      ],
+    ])('answers 409 for %s', async (_name, times, code) => {
+      mockUpstream()
+
+      const res = await create({ ...valid, ...times })
+
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({ warnings: [{ code }] })
+    })
+
+    it('does not warn about an entry that only touches another', async () => {
+      const before = buildEntry(9, 6, { start: hoursAgo(4), end: valid.start })
+      mockUpstream(undefined, { entries: [before] })
+
+      expect((await create(valid)).status).toBe(201)
+    })
+
+    it('answers 404 when the task does not exist', async () => {
+      mockUpstream()
+      server.use(
+        http.get(`${BASE}/tasks/:id`, () =>
+          HttpResponse.json({ error: 'nope' }, { status: 404 }),
+        ),
+      )
+
+      const res = await create(valid)
+
+      expect(res.status).toBe(404)
+      expect(json(res).error).toBe('Task not found')
+      expect(posted).toHaveLength(0)
+    })
+
+    it('looks the task up once for repeated creates', async () => {
+      mockUpstream()
+
+      await create(valid)
+      await create(valid)
+
+      expect(taskCalls).toBe(1)
+    })
+
+    it('looks up each task separately', async () => {
+      mockUpstream()
+
+      await create(valid)
+      await request(app).post('/api/tasks/6/entries').set('Cookie', cookie()).send(valid)
+
+      expect(taskCalls).toBe(2)
+    })
+  })
+
   it.each([
     [400, 400, 'Memtime did not accept this time entry.'],
     [404, 404, 'Task not found'],
@@ -346,10 +524,7 @@ describe('POST /api/tasks/:taskId/entries', () => {
   ])('maps upstream %i to %i', async (upstream, status, error) => {
     mockUpstream(() => HttpResponse.json({ error: 'raw' }, { status: upstream }))
 
-    const res = await request(app)
-      .post('/api/tasks/5/entries')
-      .set('Cookie', cookie())
-      .send(valid)
+    const res = await create(valid)
 
     expect(res.status).toBe(status)
     expect(json(res).error).toBe(error)
@@ -360,10 +535,7 @@ describe('POST /api/tasks/:taskId/entries', () => {
       HttpResponse.json({}, { status: 429, headers: { 'Retry-After': '30' } }),
     )
 
-    const res = await request(app)
-      .post('/api/tasks/5/entries')
-      .set('Cookie', cookie())
-      .send(valid)
+    const res = await create(valid)
 
     expect(res.status).toBe(429)
     expect(res.headers['retry-after']).toBe('30')
@@ -372,10 +544,7 @@ describe('POST /api/tasks/:taskId/entries', () => {
   it('answers 502 when upstream sends an unexpected body', async () => {
     mockUpstream(() => HttpResponse.text('created', { status: 201 }))
 
-    const res = await request(app)
-      .post('/api/tasks/5/entries')
-      .set('Cookie', cookie())
-      .send(valid)
+    const res = await create(valid)
 
     expect(res.status).toBe(502)
   })
@@ -396,7 +565,16 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
     start: '2025-01-01T09:00:00Z',
     end: '2025-01-01T10:00:00Z',
   }
-  const entries = [buildEntry(0, 5), buildEntry(1, 5), buildEntry(2, 6)]
+  // Entry 3 is on its own day, so it overlaps none of the others.
+  const entries = [
+    buildEntry(0, 5),
+    buildEntry(1, 5),
+    buildEntry(2, 6),
+    buildEntry(3, 6, {
+      start: '2025-01-02T09:00:00.000Z',
+      end: '2025-01-02T10:00:00.000Z',
+    }),
+  ]
   let put: { id: string; auth: string | null; body: unknown }[]
   let listCalls: number
 
@@ -526,15 +704,116 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
       },
     )
 
-    it('answers 400 for invalid input without calling upstream', async () => {
+    it('answers 400 for invalid input without calling put', async () => {
       mockUpstream()
       const res = await request(app)
         .put('/api/tasks/5/entries/1')
         .set('Cookie', cookie())
         .send({ ...valid, end: valid.start })
       expect(res.status).toBe(400)
-      expect(json(res).error).toBe('Invalid end: must be after start')
+      expect(res.body).toMatchObject({
+        error: 'End must be after the start',
+        code: 'end_not_after_start',
+        field: 'end',
+      })
       expect(put).toHaveLength(0)
+    })
+
+    it.each([
+      ['a blank comment', { comment: ' ' }, 'comment_required'],
+      ['a long comment', { comment: 'x'.repeat(501) }, 'comment_too_long'],
+      ['an unreadable start', { start: 'soon' }, 'invalid_start'],
+      ['an end in the future', { start: hoursAgo(1), end: hoursAgo(-1) }, 'in_future'],
+      ['an entry over 24 hours', { end: '2025-01-03T10:00:00Z' }, 'too_long'],
+    ])('answers 400 for %s', async (_name, change, code) => {
+      mockUpstream()
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ ...valid, ...change })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ code })
+      expect(put).toHaveLength(0)
+    })
+
+    it('answers 200 with the entry and calls nothing when nothing changed', async () => {
+      mockUpstream()
+      const { comment, start, end } = entries[1]!
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ comment: ` ${comment} `, start: start.replace('Z', '+00:00'), end })
+
+      expect(res.status).toBe(200)
+      expect(res.body).toMatchObject({ id: 1, comment, start, end })
+      expect(res.body).not.toHaveProperty('userId')
+      expect(put).toHaveLength(0)
+      expect(listCalls).toBe(1)
+    })
+
+    it('does not nag about warnings the original already had', async () => {
+      // The seeded entries are old and overlap each other, yet only the comment changes.
+      mockUpstream()
+      const { start, end } = entries[1]!
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ comment: 'New words', start, end })
+
+      expect(res.status).toBe(200)
+      expect(put).toHaveLength(1)
+    })
+
+    it('answers 409 when the change overlaps an entry it did not overlap before', async () => {
+      mockUpstream()
+      const { start, end } = entries[3]!
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ ...valid, start, end })
+
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({
+        error: 'Please confirm this time entry',
+        warnings: [{ code: 'overlap', entries: [{ id: 3, taskId: 6 }] }],
+      })
+      expect(JSON.stringify(res.body)).not.toContain('userId')
+      expect(put).toHaveLength(0)
+    })
+
+    it('saves the change once the warning is accepted', async () => {
+      mockUpstream()
+      const { start, end } = entries[3]!
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send({ ...valid, start, end, acceptedWarnings: ['overlap'] })
+
+      expect(res.status).toBe(200)
+      expect(put).toHaveLength(1)
+    })
+
+    it('does not look the task up on an edit', async () => {
+      mockUpstream()
+      let taskCalls = 0
+      server.use(
+        http.get(`${BASE}/tasks/:id`, () => {
+          taskCalls++
+          return HttpResponse.json({ id: 5, status: 'completed' })
+        }),
+      )
+
+      const res = await request(app)
+        .put('/api/tasks/5/entries/1')
+        .set('Cookie', cookie())
+        .send(valid)
+
+      expect(res.status).toBe(200)
+      expect(taskCalls).toBe(0)
     })
 
     it.each([
