@@ -25,7 +25,10 @@ describe('GET /api/tasks/:taskId/entries', () => {
   // A new app per test, so no test sees another's cached entries.
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
-    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+    app = createApp({
+      env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
+      sessionStore: store,
+    })
   })
 
   const cookie = (key = KEY) => `memtime_sid=${store.create(key).id}`
@@ -212,7 +215,10 @@ describe('POST /api/tasks/:taskId/entries', () => {
 
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
-    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+    app = createApp({
+      env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
+      sessionStore: store,
+    })
   })
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`
@@ -569,7 +575,10 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
 
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
-    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+    app = createApp({
+      env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
+      sessionStore: store,
+    })
   })
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`
@@ -863,7 +872,10 @@ describe('DELETE /api/tasks/:taskId/entries/:entryId', () => {
 
   let app: ReturnType<typeof createApp>
   beforeEach(() => {
-    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+    app = createApp({
+      env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
+      sessionStore: store,
+    })
   })
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`

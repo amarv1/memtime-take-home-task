@@ -3,13 +3,11 @@ import type { Response } from 'express'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { getSession, requireSession } from '../middleware/requireSession.ts'
 import type { SessionStore } from '../sessions/sessionStore.ts'
-import { createMemtimeClient } from './memtimeClient.ts'
+import type { MemtimeClient } from './memtimeClient.ts'
 
 interface Options {
   store: SessionStore
-  memtimeApiUrl: string
-  timeoutMs?: number
-  fetch?: typeof globalThis.fetch
+  client: MemtimeClient
 }
 
 // Positive integer without leading zeros. Anything else never reaches the upstream path.
@@ -46,14 +44,7 @@ function allowedQuery(query: Record<string, unknown>): string {
  * Read-only proxy for the client, project and task lists, and for single task and project lookups. It adds the session's
  * API key and passes the upstream answer through: no caching, throttling or retry.
  */
-export function memtimeRouter({
-  store,
-  memtimeApiUrl,
-  timeoutMs = 10_000,
-  fetch,
-}: Options) {
-  const client = createMemtimeClient({ memtimeApiUrl, timeoutMs, fetch })
-
+export function memtimeRouter({ store, client }: Options) {
   async function forward(
     res: Response,
     upstreamPath: string,

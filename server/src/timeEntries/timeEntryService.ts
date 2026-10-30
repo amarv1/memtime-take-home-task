@@ -1,5 +1,6 @@
 import { hashApiKey } from '../cache/hashApiKey.ts'
 import type { Cache } from '../cache/memoryCache.ts'
+import { CircuitOpenError } from '../memtime/circuitBreaker.ts'
 import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts'
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
@@ -114,8 +115,8 @@ export function createTimeEntryService({ client, cache }: Options) {
   }
 
   /**
-   * Runs a write call. If its outcome is unknown (an error other than a rejected key, or a 5xx),
-   * Memtime may still have applied it, so the cached list is dropped.
+   * Runs a write call. If its outcome is unknown (an error other than a rejected key or an open
+   * circuit, which sent nothing, or a 5xx), Memtime may still have applied it, so the cached list is dropped.
    */
   async function write(
     apiKey: string,
@@ -125,7 +126,8 @@ export function createTimeEntryService({ client, cache }: Options) {
     try {
       response = await call()
     } catch (err) {
-      if (!(err instanceof MemtimeKeyRejectedError)) await invalidate(apiKey)
+      if (!(err instanceof MemtimeKeyRejectedError || err instanceof CircuitOpenError))
+        await invalidate(apiKey)
       throw err
     }
     if (response.status >= 500) await invalidate(apiKey)

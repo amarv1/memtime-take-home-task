@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { verifyApiKey } from '../memtime/verifyApiKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 import {
   SESSION_COOKIE,
@@ -14,10 +13,10 @@ const bodySchema = z.object({ apiKey: z.string().trim().min(1).max(512) })
 
 interface Options {
   store: SessionStore
-  memtimeApiUrl: string
   ttlMs: number
   secureCookies: boolean
-  verify?: typeof verifyApiKey
+  /** Resolves to whether the key is accepted; throws when that can't be decided. */
+  verify: (apiKey: string) => Promise<boolean>
 }
 
 const toBody = (session: Session) => ({
@@ -25,13 +24,7 @@ const toBody = (session: Session) => ({
 })
 
 /** Sign in, check, and sign out. The API key itself never leaves the server. */
-export function sessionRouter({
-  store,
-  memtimeApiUrl,
-  ttlMs,
-  secureCookies,
-  verify = verifyApiKey,
-}: Options) {
+export function sessionRouter({ store, ttlMs, secureCookies, verify }: Options) {
   const cookieOptions = sessionCookieOptions(secureCookies)
 
   const router = Router()
@@ -41,8 +34,7 @@ export function sessionRouter({
     if (!parsed.success) throw new HttpError(400, 'API key is required')
     const { apiKey } = parsed.data
 
-    if (!(await verify(memtimeApiUrl, apiKey)))
-      throw new HttpError(401, 'Invalid API key')
+    if (!(await verify(apiKey))) throw new HttpError(401, 'Invalid API key')
 
     const oldId = readSessionId(req.cookies)
     if (oldId) store.delete(oldId)

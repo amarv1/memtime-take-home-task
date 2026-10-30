@@ -14,7 +14,12 @@ describe('session routes', () => {
   const stores: ReturnType<typeof createSessionStore>[] = []
 
   function setup(extra: NodeJS.ProcessEnv = {}) {
-    const env = loadEnv({ MEMTIME_API_URL: UPSTREAM, COOKIE_SECURE: 'false', ...extra })
+    const env = loadEnv({
+      MEMTIME_API_URL: UPSTREAM,
+      COOKIE_SECURE: 'false',
+      MEMTIME_BREAKER_THRESHOLD: '1000',
+      ...extra,
+    })
     const store = createSessionStore({
       ttlMs: env.SESSION_TTL_MS,
       maxSessions: env.MAX_SESSIONS,

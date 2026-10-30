@@ -7,6 +7,8 @@ describe('loadEnv', () => {
       LOG_LEVEL: 'info',
       PORT: 3000,
       MEMTIME_API_URL: 'https://interview-api.memtime-demo.deno.net/api/v1',
+      MEMTIME_BREAKER_THRESHOLD: 5,
+      MEMTIME_BREAKER_OPEN_MS: 30_000,
       SESSION_TTL_MS: 3_600_000,
       TIME_ENTRIES_CACHE_TTL_MS: 300_000,
       SIGN_IN_RATE_LIMIT: 10,

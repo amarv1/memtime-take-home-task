@@ -1,10 +1,14 @@
 import { logger } from '../logger.ts'
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
+import { CircuitOpenError } from './circuitBreaker.ts'
+import type { CircuitBreaker } from './circuitBreaker.ts'
 
 interface Options {
   memtimeApiUrl: string
   timeoutMs?: number
+  /** Shared by every call, so one outage is noticed once. Without it, calls always go through. */
+  breaker?: CircuitBreaker
   fetch?: typeof globalThis.fetch
 }
 
@@ -19,10 +23,14 @@ export type MemtimeClient = ReturnType<typeof createMemtimeClient>
 /**
  * Calls the Memtime API with an API key. Maps a network failure or timeout to a 502 and a 401 to
  * `MemtimeKeyRejectedError`; any other status is returned as it is for the caller to judge.
+ * Calls go through the circuit breaker: network failures, timeouts and 5xx count against it,
+ * while any other answer (401 and 429 included) shows Memtime is up. While it is open, calls
+ * throw `CircuitOpenError` without reaching Memtime.
  */
 export function createMemtimeClient({
   memtimeApiUrl,
   timeoutMs = 10_000,
+  breaker,
   fetch,
 }: Options) {
   // String join on purpose: `new URL('/clients', base)` would drop the `/api/v1` prefix.
@@ -39,10 +47,7 @@ export function createMemtimeClient({
   ): Promise<MemtimeResponse> {
     const url = `${baseUrl}${upstreamPath}${search ? `?${search}` : ''}`
 
-    let status: number
-    let body: string
-    let headers: Headers
-    try {
+    const call = async (): Promise<MemtimeResponse> => {
       // Looked up per call so a patched global fetch (as in tests) is always picked up.
       const upstream = await (fetch ?? globalThis.fetch)(url, {
         method,
@@ -54,10 +59,18 @@ export function createMemtimeClient({
         body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: AbortSignal.timeout(timeoutMs),
       })
-      status = upstream.status
-      headers = upstream.headers
-      body = await upstream.text()
+      return {
+        status: upstream.status,
+        headers: upstream.headers,
+        body: await upstream.text(),
+      }
+    }
+
+    let response: MemtimeResponse
+    try {
+      response = breaker ? await breaker.run(call, (r) => r.status >= 500) : await call()
     } catch (err) {
+      if (err instanceof CircuitOpenError) throw err
       // Log what failed, never the key or the URL: only the error name and its cause's message.
       const reason = err instanceof Error ? err.name : 'unknown error'
       const code =
@@ -67,6 +80,7 @@ export function createMemtimeClient({
       logger.error(`Memtime request failed for ${label}: ${reason}${code}`)
       throw new HttpError(502, "Couldn't reach Memtime. Please try again.")
     }
+    const { status, headers, body } = response
 
     if (status === 401) throw new MemtimeKeyRejectedError()
     if (status >= 500) logger.warn(`Memtime returned ${status} for ${label}`)

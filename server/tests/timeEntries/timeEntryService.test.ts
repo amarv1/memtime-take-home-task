@@ -3,6 +3,7 @@ import { http, HttpResponse, delay } from 'msw'
 import { createMemoryCache } from '../../src/cache/memoryCache.ts'
 import type { Cache } from '../../src/cache/memoryCache.ts'
 import { logger } from '../../src/logger.ts'
+import { CircuitOpenError } from '../../src/memtime/circuitBreaker.ts'
 import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
 import { MemtimeKeyRejectedError } from '../../src/middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../../src/middleware/errorHandler.ts'
@@ -415,6 +416,26 @@ describe('timeEntryService', () => {
         )
 
         expect(error).toBeInstanceOf(MemtimeKeyRejectedError)
+        await s.getAllEntries(KEY)
+        expect(calls).toHaveLength(1)
+      },
+    )
+
+    it.each(['create', 'update', 'delete'])(
+      'keeps the cache when the circuit is open on %s, since nothing was sent',
+      async (name) => {
+        mockEntries(many(3))
+        const real = createMemtimeClient({ memtimeApiUrl: BASE })
+        const open = () => Promise.reject(new CircuitOpenError(30))
+        const s = createTimeEntryService({
+          client: { ...real, post: open, put: open, delete: open },
+          cache,
+        })
+        await s.getAllEntries(KEY)
+
+        const error = await writes[name]!.run(s).catch((e: unknown) => e)
+
+        expect(error).toBeInstanceOf(CircuitOpenError)
         await s.getAllEntries(KEY)
         expect(calls).toHaveLength(1)
       },

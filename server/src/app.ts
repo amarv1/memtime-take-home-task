@@ -4,8 +4,14 @@ import helmet from 'helmet'
 import { createMemoryCache } from './cache/memoryCache.ts'
 import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
+import { healthRouter } from './health/healthRouter.ts'
+import { createReadinessCheck } from './health/readiness.ts'
+import { createCircuitBreaker } from './memtime/circuitBreaker.ts'
+import type { CircuitBreaker } from './memtime/circuitBreaker.ts'
 import { createMemtimeClient } from './memtime/memtimeClient.ts'
+import type { MemtimeClient } from './memtime/memtimeClient.ts'
 import { memtimeRouter } from './memtime/memtimeRouter.ts'
+import { verifyApiKey } from './memtime/verifyApiKey.ts'
 import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from './middleware/errorHandler.ts'
 import { requestContext, requestLogger } from './middleware/requestContext.ts'
@@ -24,6 +30,10 @@ import type { TimeEntry, TimeEntryService } from './timeEntries/timeEntryService
 interface Options {
   env?: Env
   sessionStore?: SessionStore
+  /** One breaker for every Memtime call; tests inject one to control its clock. */
+  breaker?: CircuitBreaker
+  /** Must use the same breaker as `breaker`, or the readiness check won't see its state. */
+  memtimeClient?: MemtimeClient
   timeEntryService?: TimeEntryService
   taskLookup?: TaskLookup
 }
@@ -36,8 +46,13 @@ export function createApp({
     maxSessions: env.MAX_SESSIONS,
     maxPerKey: env.MAX_SESSIONS_PER_KEY,
   }),
+  breaker = createCircuitBreaker({
+    failureThreshold: env.MEMTIME_BREAKER_THRESHOLD,
+    openMs: env.MEMTIME_BREAKER_OPEN_MS,
+  }),
+  memtimeClient = createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL, breaker }),
   timeEntryService = createTimeEntryService({
-    client: createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL }),
+    client: memtimeClient,
     // A few users at a time is plenty here; the cap only bounds memory.
     cache: createMemoryCache<TimeEntry[]>({
       ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
@@ -45,7 +60,7 @@ export function createApp({
     }),
   }),
   taskLookup = createTaskLookup({
-    client: createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL }),
+    client: memtimeClient,
     cache: createMemoryCache<string>({
       ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
       maxEntries: 1000,
@@ -62,16 +77,22 @@ export function createApp({
   app.use(express.json())
   app.use(cookieParser())
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' })
-  })
+  app.use(
+    '/api/health',
+    healthRouter({
+      readiness: createReadinessCheck({
+        breaker,
+        healthUrl: new URL('/health', env.MEMTIME_API_URL).toString(),
+      }),
+    }),
+  )
 
   app.post('/api/session', signInLimiter(env.SIGN_IN_RATE_LIMIT))
   app.use(
     '/api/session',
     sessionRouter({
       store: sessionStore,
-      memtimeApiUrl: env.MEMTIME_API_URL,
+      verify: (apiKey) => verifyApiKey(memtimeClient, apiKey),
       ttlMs: env.SESSION_TTL_MS,
       secureCookies: env.COOKIE_SECURE,
     }),
@@ -86,10 +107,7 @@ export function createApp({
     }),
   )
 
-  app.use(
-    '/api',
-    memtimeRouter({ store: sessionStore, memtimeApiUrl: env.MEMTIME_API_URL }),
-  )
+  app.use('/api', memtimeRouter({ store: sessionStore, client: memtimeClient }))
 
   app.use(notFound)
   app.use(

@@ -1,7 +1,10 @@
+import { http, HttpResponse } from 'msw'
 import request from 'supertest'
 import { createApp } from '../../src/app.ts'
+import { loadEnv } from '../../src/env.ts'
 import { logger } from '../../src/logger.ts'
 import { currentRequestId } from '../../src/requestId.ts'
+import { server } from '../support/server.ts'
 
 describe('request context', () => {
   const app = createApp()
@@ -45,6 +48,27 @@ describe('request context', () => {
     expect(log).toHaveBeenCalledWith(
       'debug',
       expect.stringContaining('GET /api/health 200'),
+    )
+  })
+
+  it('logs the readiness probe at debug, even when it answers 503', async () => {
+    const log = vi.spyOn(logger, 'log').mockImplementation(vi.fn())
+    const down = createApp({
+      env: loadEnv({ MEMTIME_API_URL: 'https://upstream.test/api/v1' }),
+    })
+    server.use(
+      http.get(
+        'https://upstream.test/health',
+        () => new HttpResponse('x', { status: 500 }),
+      ),
+    )
+
+    const res = await request(down).get('/api/health/ready')
+
+    expect(res.status).toBe(503)
+    expect(log).toHaveBeenCalledWith(
+      'debug',
+      expect.stringContaining('GET /api/health/ready 503'),
     )
   })
 

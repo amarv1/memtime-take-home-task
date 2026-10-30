@@ -14,6 +14,7 @@ New decisions get a new file. If a decision changes, add a new ADR that supersed
 | [0005](0005-selected-task-in-url.md)                       | Selected task in the URL                       | Accepted |
 | [0006](0006-time-entries-filtered-and-cached-on-server.md) | Time entries filtered and cached on the server | Accepted |
 | [0007](0007-time-entry-rules-on-the-server.md)             | Time entry rules on the server                 | Accepted |
+| [0008](0008-memtime-circuit-breaker-and-readiness.md)      | Memtime circuit breaker and readiness          | Accepted |
 
 ## Writing a new ADR
 

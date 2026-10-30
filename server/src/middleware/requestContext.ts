@@ -20,9 +20,10 @@ export const requestLogger: RequestHandler = (req, res, next) => {
   res.on('finish', () => {
     const durationMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6)
     // Path only: query strings can carry values we don't want in logs.
-    const path = req.originalUrl.split('?')[0]
-    const level =
-      res.statusCode >= 500 ? 'error' : req.path === '/api/health' ? 'debug' : 'info'
+    const path = req.originalUrl.split('?')[0] ?? ''
+    // Health paths stay at debug even when not ready, so a down probe doesn't spam error logs.
+    const isHealth = path === '/api/health' || path.startsWith('/api/health/')
+    const level = isHealth ? 'debug' : res.statusCode >= 500 ? 'error' : 'info'
     logger.log(level, `${req.method} ${path} ${res.statusCode} ${durationMs}ms`)
   })
   next()

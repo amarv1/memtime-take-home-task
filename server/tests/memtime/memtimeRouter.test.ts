@@ -5,6 +5,7 @@ import request from 'supertest'
 import { createApp } from '../../src/app.ts'
 import { loadEnv } from '../../src/env.ts'
 import { logger } from '../../src/logger.ts'
+import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
 import { memtimeRouter } from '../../src/memtime/memtimeRouter.ts'
 import { endSessionOnRevokedKey } from '../../src/middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from '../../src/middleware/errorHandler.ts'
@@ -31,7 +32,7 @@ describe('memtimeRouter', () => {
   afterAll(() => store.stop())
 
   const app = createApp({
-    env: loadEnv({ MEMTIME_API_URL: BASE }),
+    env: loadEnv({ MEMTIME_API_URL: BASE, MEMTIME_BREAKER_THRESHOLD: '1000' }),
     sessionStore: store,
   })
 
@@ -250,7 +251,8 @@ describe('memtimeRouter', () => {
     function build(options: { timeoutMs?: number; fetch?: typeof fetch }) {
       const a = express()
       a.use(cookieParser())
-      a.use('/api', memtimeRouter({ store, memtimeApiUrl: `${BASE}/`, ...options }))
+      const client = createMemtimeClient({ memtimeApiUrl: `${BASE}/`, ...options })
+      a.use('/api', memtimeRouter({ store, client }))
       a.use(notFound)
       a.use(endSessionOnRevokedKey(store, { secureCookies: false }))
       a.use(errorHandler)
