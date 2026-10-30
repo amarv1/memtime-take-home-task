@@ -1,3 +1,5 @@
+import { Pencil } from 'lucide-react'
+import { Link } from 'react-router'
 import {
   Table,
   TableBody,
@@ -9,7 +11,7 @@ import {
 import type { TimeEntry } from './api'
 import { formatDateTime, formatDuration } from './format'
 
-/** The entries as rows: ID, Task ID, Comment, Start, End, Duration and Created At. */
+/** The entries as rows: ID, Task ID, Comment, Start, End, Duration and Created At, with an Edit link. */
 export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
   return (
     <Table>
@@ -22,6 +24,9 @@ export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
           <TableHead>End</TableHead>
           <TableHead>Duration</TableHead>
           <TableHead>Created At</TableHead>
+          <TableHead>
+            <span className="sr-only">Actions</span>
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -43,6 +48,16 @@ export function EntriesTable({ entries }: { entries: TimeEntry[] }) {
             </TableCell>
             <TableCell className="whitespace-nowrap">
               {formatDateTime(entry.createdAt)}
+            </TableCell>
+            <TableCell>
+              <Link
+                to={`/tasks/${entry.taskId}/entries/${entry.id}/edit`}
+                aria-label={`Edit entry ${entry.id}`}
+                className="inline-flex items-center gap-1 text-sm underline-offset-4 hover:underline"
+              >
+                <Pencil className="size-3.5" aria-hidden />
+                Edit
+              </Link>
             </TableCell>
           </TableRow>
         ))}

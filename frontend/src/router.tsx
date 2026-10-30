@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/AppLayout'
 import { RouteError } from '@/components/RouteError'
 import { RequireAuth } from '@/features/auth/RequireAuth'
 import { AddEntryPage } from '@/pages/AddEntryPage'
+import { EditEntryPage } from '@/pages/EditEntryPage'
 import { HierarchyPage } from '@/pages/HierarchyPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { TaskEntriesPage } from '@/pages/TaskEntriesPage'
@@ -28,6 +29,10 @@ export const routes: RouteObject[] = [
               },
               { path: '/tasks/:taskId/entries', element: <TaskEntriesPage /> },
               { path: '/tasks/:taskId/entries/new', element: <AddEntryPage /> },
+              {
+                path: '/tasks/:taskId/entries/:entryId/edit',
+                element: <EditEntryPage />,
+              },
             ],
           },
         ],

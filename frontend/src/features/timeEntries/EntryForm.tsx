@@ -1,13 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, Loader2 } from 'lucide-react'
+import type { UseMutationResult } from '@tanstack/react-query'
+import { parseISO } from 'date-fns'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
-import type { TimeEntry } from './api'
-import { useCreateEntry } from './hooks'
+import type { NewEntry, TimeEntry } from './api'
 import { toDateTimeInput } from './format'
 
 const MAX_COMMENT_LENGTH = 1000
@@ -31,20 +32,34 @@ type FormValues = z.infer<typeof schema>
 interface Props {
   taskId: number
   taskName: string | undefined
-  onCreated: (entry: TimeEntry) => void
+  /** The entry being edited; without it the form starts a new one. */
+  entry?: TimeEntry
+  save: UseMutationResult<TimeEntry, Error, NewEntry>
+  submitLabel: string
+  /** Shown when the save answers 404. */
+  notFoundMessage: string
+  onSaved: (entry: TimeEntry) => void
   onCancel: () => void
 }
 
 /** The task is fixed by the page, so it's shown but can't be changed here. */
-export function AddEntryForm({ taskId, taskName, onCreated, onCancel }: Props) {
-  const create = useCreateEntry(taskId)
+export function EntryForm({
+  taskId,
+  taskName,
+  entry,
+  save: create,
+  submitLabel,
+  notFoundMessage,
+  onSaved,
+  onCancel,
+}: Props) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: defaults(),
+    defaultValues: entry ? valuesOf(entry) : defaults(),
   })
 
   function onSubmit({ comment, start, end }: FormValues) {
@@ -55,7 +70,7 @@ export function AddEntryForm({ taskId, taskName, onCreated, onCancel }: Props) {
         start: new Date(start).toISOString(),
         end: new Date(end).toISOString(),
       },
-      { onSuccess: onCreated },
+      { onSuccess: onSaved },
     )
   }
 
@@ -115,7 +130,7 @@ export function AddEntryForm({ taskId, taskName, onCreated, onCancel }: Props) {
           className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
         >
           <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          <p>{errorMessage(create.error)}</p>
+          <p>{errorMessage(create.error, notFoundMessage)}</p>
         </div>
       )}
 
@@ -127,7 +142,7 @@ export function AddEntryForm({ taskId, taskName, onCreated, onCancel }: Props) {
               Saving…
             </>
           ) : (
-            'Add entry'
+            submitLabel
           )}
         </Button>
         <Button type="button" variant="outline" onClick={onCancel}>
@@ -166,9 +181,17 @@ function defaults(): FormValues {
   return { comment: '', start: toDateTimeInput(start), end: toDateTimeInput(end) }
 }
 
-function errorMessage(error: Error): string {
+function valuesOf(entry: TimeEntry): FormValues {
+  return {
+    comment: entry.comment,
+    start: toDateTimeInput(parseISO(entry.start)),
+    end: toDateTimeInput(parseISO(entry.end)),
+  }
+}
+
+function errorMessage(error: Error, notFoundMessage: string): string {
   if (error instanceof ApiError) {
-    if (error.status === 404) return "This task doesn't exist any more."
+    if (error.status === 404) return notFoundMessage
     if (error.status === 400) return `The entry wasn't accepted. ${error.message}`
     if (error.status === 429 || error.status === 0) return error.message
   }

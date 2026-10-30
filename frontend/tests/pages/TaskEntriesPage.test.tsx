@@ -43,7 +43,16 @@ describe('TaskEntriesPage', () => {
     await waitFor(() => expect(document.title).toBe('Design homepage · Memtime'))
     expect(
       screen.getAllByRole('columnheader').map((header) => header.textContent),
-    ).toEqual(['ID', 'Task ID', 'Comment', 'Start', 'End', 'Duration', 'Created At'])
+    ).toEqual([
+      'ID',
+      'Task ID',
+      'Comment',
+      'Start',
+      'End',
+      'Duration',
+      'Created At',
+      'Actions',
+    ])
     const row = (await screen.findAllByRole('row'))[1]!
     const cells = within(row).getAllByRole('cell')
     expect(cells[0]).toHaveTextContent('7')
@@ -53,6 +62,10 @@ describe('TaskEntriesPage', () => {
     expect(cells[4]).toHaveTextContent(/^Jan 1, 2025 /)
     expect(cells[5]).toHaveTextContent('1h 5m')
     expect(cells[6]).toHaveTextContent(/^Jan 1, 2025 /)
+    expect(within(cells[7]!).getByRole('link', { name: 'Edit entry 7' })).toHaveAttribute(
+      'href',
+      '/tasks/398/entries/7/edit',
+    )
   })
 
   it('shows a loading status first', async () => {

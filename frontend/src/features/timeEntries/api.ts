@@ -47,3 +47,26 @@ export function createTaskEntry(taskId: number, entry: NewEntry): Promise<TimeEn
     body: JSON.stringify(entry),
   })
 }
+
+export function getTaskEntry(taskId: number, entryId: number): Promise<TimeEntry> {
+  return apiFetch<TimeEntry>(`/api/tasks/${taskId}/entries/${entryId}`)
+}
+
+export function updateTaskEntry(
+  taskId: number,
+  entryId: number,
+  entry: NewEntry,
+): Promise<TimeEntry> {
+  return apiFetch<TimeEntry>(`/api/tasks/${taskId}/entries/${entryId}`, {
+    method: 'PUT',
+    body: JSON.stringify(entry),
+  })
+}
+
+// Same rule as the server. Unlike task ids, entry ids can be 0.
+const ENTRY_ID_PATTERN = /^(0|[1-9]\d{0,9})$/
+
+/** The entry id from the URL, or null when it is missing or not a valid id. */
+export function parseEntryId(raw: string | undefined): number | null {
+  return raw !== undefined && ENTRY_ID_PATTERN.test(raw) ? Number(raw) : null
+}

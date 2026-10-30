@@ -1,16 +1,14 @@
-import { toast } from 'sonner'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ApiError } from '@/lib/api'
+import { toast } from 'sonner'
 import { parseTaskId, useTask } from '@/features/hierarchy/hooks'
-import { AddEntryForm } from '@/features/timeEntries/AddEntryForm'
+import { EntryForm } from '@/features/timeEntries/EntryForm'
+import { useCreateEntry } from '@/features/timeEntries/hooks'
+import { ApiError } from '@/lib/api'
 
 export function AddEntryPage() {
   const taskId = parseTaskId(useParams().taskId)
-  const navigate = useNavigate()
   // Shares its cache entry with the tree, so this adds no request.
   const task = useTask(taskId ?? undefined)
-
-  const entriesPath = `/tasks/${taskId}/entries`
   const unknownTask = task.error instanceof ApiError && task.error.status === 404
 
   return (
@@ -27,17 +25,30 @@ export function AddEntryPage() {
             .
           </p>
         ) : (
-          <AddEntryForm
-            taskId={taskId}
-            taskName={task.data?.name}
-            onCancel={() => void navigate(entriesPath)}
-            onCreated={(entry) => {
-              toast.success(`Time entry #${entry.id} added`)
-              void navigate(entriesPath)
-            }}
-          />
+          <AddEntry taskId={taskId} taskName={task.data?.name} />
         )}
       </div>
     </main>
+  )
+}
+
+function AddEntry({ taskId, taskName }: { taskId: number; taskName?: string }) {
+  const navigate = useNavigate()
+  const save = useCreateEntry(taskId)
+  const entriesPath = `/tasks/${taskId}/entries`
+
+  return (
+    <EntryForm
+      taskId={taskId}
+      taskName={taskName}
+      save={save}
+      submitLabel="Add entry"
+      notFoundMessage="This task doesn't exist any more."
+      onCancel={() => void navigate(entriesPath)}
+      onSaved={(entry) => {
+        toast.success(`Time entry #${entry.id} added`)
+        void navigate(entriesPath)
+      }}
+    />
   )
 }
