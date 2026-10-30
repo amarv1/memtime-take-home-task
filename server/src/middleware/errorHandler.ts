@@ -4,11 +4,14 @@ import { logger } from '../logger.ts'
 /** An error with an HTTP status whose message is safe to show to the client. */
 export class HttpError extends Error {
   readonly status: number
+  /** Extra response headers, such as `Retry-After`. */
+  readonly headers?: Record<string, string>
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, headers?: Record<string, string>) {
     super(message)
     this.name = 'HttpError'
     this.status = status
+    this.headers = headers
   }
 }
 
@@ -20,6 +23,7 @@ export const notFound: RequestHandler = (_req, _res, next) => {
 /** Sends every error as `{ error }`, matching the upstream API's error shape. */
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof HttpError) {
+    if (err.headers) res.set(err.headers)
     res.status(err.status).json({ error: err.message })
     return
   }

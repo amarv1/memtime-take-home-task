@@ -8,6 +8,7 @@ describe('loadEnv', () => {
       PORT: 3000,
       MEMTIME_API_URL: 'https://interview-api.memtime-demo.deno.net/api/v1',
       SESSION_TTL_MS: 3_600_000,
+      TIME_ENTRIES_CACHE_TTL_MS: 300_000,
       SIGN_IN_RATE_LIMIT: 10,
       MAX_SESSIONS: 1000,
       MAX_SESSIONS_PER_KEY: 5,

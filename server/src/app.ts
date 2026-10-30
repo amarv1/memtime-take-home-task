@@ -1,8 +1,10 @@
 import cookieParser from 'cookie-parser'
 import express from 'express'
 import helmet from 'helmet'
+import { createMemoryCache } from './cache/memoryCache.ts'
 import { loadEnv } from './env.ts'
 import type { Env } from './env.ts'
+import { createMemtimeClient } from './memtime/memtimeClient.ts'
 import { memtimeRouter } from './memtime/memtimeRouter.ts'
 import { endSessionOnRevokedKey } from './middleware/endSessionOnRevokedKey.ts'
 import { errorHandler, notFound } from './middleware/errorHandler.ts'
@@ -12,10 +14,14 @@ import { signInLimiter } from './middleware/signInLimiter.ts'
 import { sessionRouter } from './sessions/sessionRouter.ts'
 import { createSessionStore } from './sessions/sessionStore.ts'
 import type { SessionStore } from './sessions/sessionStore.ts'
+import { timeEntryRouter } from './timeEntries/timeEntryRouter.ts'
+import { createTimeEntryService } from './timeEntries/timeEntryService.ts'
+import type { TimeEntry, TimeEntryService } from './timeEntries/timeEntryService.ts'
 
 interface Options {
   env?: Env
   sessionStore?: SessionStore
+  timeEntryService?: TimeEntryService
 }
 
 /** Builds the Express app. Kept separate from `listen` so tests can use it directly. */
@@ -25,6 +31,14 @@ export function createApp({
     ttlMs: env.SESSION_TTL_MS,
     maxSessions: env.MAX_SESSIONS,
     maxPerKey: env.MAX_SESSIONS_PER_KEY,
+  }),
+  timeEntryService = createTimeEntryService({
+    client: createMemtimeClient({ memtimeApiUrl: env.MEMTIME_API_URL }),
+    // A few users at a time is plenty here; the cap only bounds memory.
+    cache: createMemoryCache<TimeEntry[]>({
+      ttlMs: env.TIME_ENTRIES_CACHE_TTL_MS,
+      maxEntries: 100,
+    }),
   }),
 }: Options = {}) {
   const app = express()
@@ -51,6 +65,8 @@ export function createApp({
       secureCookies: env.COOKIE_SECURE,
     }),
   )
+
+  app.use('/api', timeEntryRouter({ store: sessionStore, service: timeEntryService }))
 
   app.use(
     '/api',

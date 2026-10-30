@@ -21,6 +21,15 @@ describe('errorHandler', () => {
     expect(res.body).toEqual({ error: 'Conflict' })
   })
 
+  it('sets the extra headers of an HttpError', async () => {
+    const error = new HttpError(429, 'Slow down', { 'Retry-After': '30' })
+
+    const res = await request(appThatThrows(error)).post('/test')
+
+    expect(res.status).toBe(429)
+    expect(res.headers['retry-after']).toBe('30')
+  })
+
   it('returns 400 for a malformed JSON body', async () => {
     const res = await request(appThatThrows(new Error('unreachable')))
       .post('/test')
