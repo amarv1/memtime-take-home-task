@@ -14,6 +14,13 @@ export interface TimeEntry {
   updatedAt: string
 }
 
+/** An entry as the browser may see it: Memtime puts the API key in `userId`. */
+export type PublicTimeEntry = Omit<TimeEntry, 'userId'>
+
+export function toPublicEntry({ userId: _userId, ...entry }: TimeEntry): PublicTimeEntry {
+  return entry
+}
+
 interface Options {
   client: MemtimeClient
   cache: Cache<TimeEntry[]>

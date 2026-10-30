@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { getSession, requireSession } from '../middleware/requireSession.ts'
 import type { SessionStore } from '../sessions/sessionStore.ts'
-import type { TimeEntryService } from './timeEntryService.ts'
+import { toPublicEntry, type TimeEntryService } from './timeEntryService.ts'
 
 interface Options {
   store: SessionStore
@@ -100,7 +100,7 @@ export function timeEntryRouter({ store, service }: Options) {
     // The data belongs to one user, so shared caches must not keep it.
     res.setHeader('Cache-Control', 'private, no-store')
     res.json({
-      items: mine.slice(offset, offset + limit),
+      items: mine.slice(offset, offset + limit).map(toPublicEntry),
       total: mine.length,
       limit,
       offset,
@@ -117,7 +117,7 @@ export function timeEntryRouter({ store, service }: Options) {
       if (!entry) throw new HttpError(404, 'Time entry not found')
 
       res.setHeader('Cache-Control', 'private, no-store')
-      res.json(entry)
+      res.json(toPublicEntry(entry))
     },
   )
 
@@ -129,7 +129,7 @@ export function timeEntryRouter({ store, service }: Options) {
     })
 
     res.setHeader('Cache-Control', 'private, no-store')
-    res.status(201).json(created)
+    res.status(201).json(toPublicEntry(created))
   })
 
   router.put(
@@ -148,7 +148,7 @@ export function timeEntryRouter({ store, service }: Options) {
       const updated = await service.updateEntry(apiKey, entryId, { taskId, ...body })
 
       res.setHeader('Cache-Control', 'private, no-store')
-      res.json(updated)
+      res.json(toPublicEntry(updated))
     },
   )
 

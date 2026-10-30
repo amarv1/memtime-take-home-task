@@ -68,6 +68,7 @@ describe('GET /api/tasks/:taskId/entries', () => {
     expect(res.headers['cache-control']).toBe('private, no-store')
     expect(json(res)).toMatchObject({ total: 30, limit: 25, offset: 0 })
     expect(json(res).items).toHaveLength(25)
+    expect(json(res).items.every((e) => !('userId' in e))).toBe(true)
     expect(
       json(res)
         .items.map((e) => e.id)
@@ -263,6 +264,7 @@ describe('POST /api/tasks/:taskId/entries', () => {
     expect(res.status).toBe(201)
     expect(res.headers['cache-control']).toBe('private, no-store')
     expect((res.body as { id: number }).id).toBe(77)
+    expect(res.body).not.toHaveProperty('userId')
     expect(posted).toEqual([
       {
         auth: `Bearer ${KEY}`,
@@ -432,6 +434,7 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
       expect(res.status).toBe(200)
       expect(res.headers['cache-control']).toBe('private, no-store')
       expect((res.body as { id: number }).id).toBe(1)
+      expect(res.body).not.toHaveProperty('userId')
       expect(listCalls).toBe(1)
     })
 
@@ -478,6 +481,7 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
 
       expect(res.status).toBe(200)
       expect(res.headers['cache-control']).toBe('private, no-store')
+      expect(res.body).not.toHaveProperty('userId')
       expect(put).toEqual([
         {
           id: '1',
