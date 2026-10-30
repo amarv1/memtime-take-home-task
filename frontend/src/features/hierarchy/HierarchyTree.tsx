@@ -2,6 +2,7 @@ import { Loader2 } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
+import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
 import { ClientItem } from './HierarchyNodes'
 import { parseTaskId, useClients, useProject, useTask } from './hooks'
 import { NodeList } from './NodeList'
@@ -15,6 +16,7 @@ import { useTreeKeyboard } from './useTreeKeyboard'
  */
 export function HierarchyTree() {
   const clients = useClients()
+  const secondsLeft = useCountdown(clients.error)
   const navigate = useNavigate()
   const { taskId: rawTaskId } = useParams()
   const taskId = parseTaskId(rawTaskId)
@@ -94,9 +96,17 @@ export function HierarchyTree() {
   if (clients.isError && !clients.data) {
     return (
       <div role="alert" className="flex flex-col items-start gap-3">
-        <p className="text-sm">Couldn't load clients. {clients.error.message}</p>
-        <Button variant="outline" onClick={() => void clients.refetch()}>
-          Try again
+        <p className="text-sm">
+          {isRateLimited(clients.error)
+            ? RATE_LIMITED_MESSAGE
+            : `Couldn't load clients. ${clients.error.message}`}
+        </p>
+        <Button
+          variant="outline"
+          disabled={secondsLeft > 0}
+          onClick={() => void clients.refetch()}
+        >
+          {secondsLeft > 0 ? `Try again in ${secondsLeft}s` : 'Try again'}
         </Button>
       </div>
     )

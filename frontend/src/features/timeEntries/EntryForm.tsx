@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
+import { withWait } from '@/lib/rateLimit'
 import type { NewEntry, TimeEntry } from './api'
 import {
   buildSchema,
@@ -216,8 +217,8 @@ function Field({ label, id, error, children }: FieldProps) {
 function errorMessage(error: Error, notFoundMessage: string): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return notFoundMessage
-    if (error.status === 400 || error.status === 429 || error.status === 0)
-      return error.message
+    if (error.status === 400 || error.status === 0) return error.message
+    if (error.status === 429) return withWait(error)
   }
   return "Couldn't save the time entry. Please try again."
 }

@@ -1,4 +1,4 @@
-import { screen, waitFor, within, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { Route, Routes, useLocation, useNavigate } from 'react-router'
 import { HierarchyTree } from '@/features/hierarchy/HierarchyTree'
@@ -206,6 +206,82 @@ describe('HierarchyTree', () => {
         expect(await screen.findByRole('treeitem', { name: child })).toBeInTheDocument()
       },
     )
+  })
+
+  describe('rate limit', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const limited = (retryAfter?: string) =>
+      HttpResponse.json(
+        {
+          error: 'Memtime is receiving too many requests.',
+        },
+        { status: 429, headers: retryAfter ? { 'Retry-After': retryAfter } : {} },
+      )
+
+    it('counts down on a level that is rate limited, then allows a retry', async () => {
+      // Before anything renders, so the countdown's timer is a fake one.
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { user } = await setup()
+      server.use(http.get('/api/clients/1/projects', () => limited('3')))
+      await toggle(user, 'Acme Corp')
+      const row = await screen.findByRole('treeitem', {
+        name: /Memtime is receiving too many requests\./,
+      })
+
+      expect(row).toHaveTextContent('Try again in 3s')
+      expect(row).toHaveAttribute('aria-disabled', 'true')
+      expect(row).not.toHaveTextContent("Couldn't load")
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
+      expect(row).toHaveTextContent(/Try again$/)
+      expect(row).not.toHaveAttribute('aria-disabled')
+    })
+
+    it('does not retry by itself', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { user } = await setup()
+      let calls = 0
+      server.use(
+        http.get('/api/clients/1/projects', () => {
+          calls += 1
+          return limited('1')
+        }),
+      )
+      await toggle(user, 'Acme Corp')
+      await screen.findByRole('treeitem', { name: /too many requests/ })
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000)
+      })
+
+      expect(calls).toBe(1)
+    })
+
+    it('counts down 60 s without a Retry-After', async () => {
+      const { user } = await setup()
+      server.use(http.get('/api/clients/1/projects', () => limited()))
+      await toggle(user, 'Acme Corp')
+
+      expect(
+        await screen.findByRole('treeitem', { name: /Try again in 60s/ }),
+      ).toBeInTheDocument()
+    })
+
+    it('counts down when the clients themselves are rate limited', async () => {
+      server.use(http.get('/api/clients', () => limited('30')))
+      renderWithProviders(<HierarchyTree />)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Memtime is receiving too many requests.',
+      )
+      expect(screen.getByRole('button', { name: 'Try again in 30s' })).toBeDisabled()
+    })
   })
 
   describe('pagination', () => {

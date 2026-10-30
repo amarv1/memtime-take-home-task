@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { ApiError } from '@/lib/api'
+import { withWait } from '@/lib/rateLimit'
 import type { TimeEntry } from './api'
 import { useDeleteEntry } from './hooks'
 
@@ -94,7 +95,8 @@ export function DeleteEntryButton({ entry }: { entry: TimeEntry }) {
 function errorMessage(error: Error): string {
   if (error instanceof ApiError) {
     if (error.status === 404) return "This time entry doesn't exist any more."
-    if (error.status === 429 || error.status === 0) return error.message
+    if (error.status === 429) return withWait(error)
+    if (error.status === 0) return error.message
   }
   return "Couldn't delete the time entry. Please try again."
 }

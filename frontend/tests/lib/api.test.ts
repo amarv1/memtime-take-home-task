@@ -119,3 +119,29 @@ describe('apiFetch', () => {
     })
   })
 })
+
+describe('ApiError retryAfterSeconds', () => {
+  const failWith = async (headers: Record<string, string>) => {
+    server.use(
+      http.get('/api/thing', () =>
+        HttpResponse.json({ error: 'slow' }, { status: 429, headers }),
+      ),
+    )
+    return (await apiFetch('/api/thing').catch((e: unknown) => e)) as ApiError
+  }
+
+  it('reads whole seconds from Retry-After', async () => {
+    expect((await failWith({ 'Retry-After': '23' })).retryAfterSeconds).toBe(23)
+  })
+
+  it.each([['Wed, 21 Oct 2026 07:28:00 GMT'], ['1.5'], ['-3'], ['soon'], ['']])(
+    'ignores %j',
+    async (value) => {
+      expect((await failWith({ 'Retry-After': value })).retryAfterSeconds).toBeUndefined()
+    },
+  )
+
+  it('is unset without the header', async () => {
+    expect((await failWith({})).retryAfterSeconds).toBeUndefined()
+  })
+})

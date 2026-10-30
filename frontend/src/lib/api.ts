@@ -12,12 +12,15 @@ interface ErrorExtras {
   field?: string
   /** The warnings a 409 asks the user to confirm. */
   warnings?: Warning[]
+  /** Whole seconds the server asks to wait (`Retry-After`). */
+  retryAfterSeconds?: number
 }
 
 export class ApiError extends Error {
   readonly status: number
   readonly field?: string
   readonly warnings?: Warning[]
+  readonly retryAfterSeconds?: number
 
   constructor(status: number, message: string, extras: ErrorExtras = {}) {
     super(message)
@@ -25,13 +28,21 @@ export class ApiError extends Error {
     this.status = status
     this.field = extras.field
     this.warnings = extras.warnings
+    this.retryAfterSeconds = extras.retryAfterSeconds
   }
 }
 
 const NETWORK_MESSAGE = "Can't reach the server. Check your connection and try again."
 
+/** `Retry-After` as whole seconds; a date or anything else is ignored. */
+function readRetryAfter(response: Response): number | undefined {
+  const value = response.headers.get('Retry-After')
+  return value !== null && /^\d{1,6}$/.test(value.trim()) ? Number(value) : undefined
+}
+
 async function readError(response: Response): Promise<ApiError> {
   const fallback = `Request failed (${response.status})`
+  const retryAfterSeconds = readRetryAfter(response)
   try {
     const body = (await response.json()) as {
       error?: unknown
@@ -44,10 +55,11 @@ async function readError(response: Response): Promise<ApiError> {
       {
         field: typeof body.field === 'string' ? body.field : undefined,
         warnings: Array.isArray(body.warnings) ? (body.warnings as Warning[]) : undefined,
+        retryAfterSeconds,
       },
     )
   } catch {
-    return new ApiError(response.status, fallback)
+    return new ApiError(response.status, fallback, { retryAfterSeconds })
   }
 }
 

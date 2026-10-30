@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
 import { Spinner, StatusRow } from './StatusRow'
 import { childKey } from './treeContext'
 
@@ -37,6 +38,7 @@ export function NodeList<T extends { id: number }>({
 }: Props<T>) {
   const { data, isPending, isError, error, isFetchNextPageError } = query
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
+  const secondsLeft = useCountdown(error)
   const missing = targetId !== undefined && !data?.some((item) => item.id === targetId)
 
   // Stops when the item shows up, the pages run out, or a page fails (the error row takes over).
@@ -75,12 +77,15 @@ export function NodeList<T extends { id: number }>({
           onActivate={() =>
             void (isFetchNextPageError ? query.fetchNextPage() : query.refetch())
           }
+          disabled={secondsLeft > 0}
         >
           <span className="min-w-0 truncate">
-            Couldn't load {noun}. {error?.message}
+            {isRateLimited(error)
+              ? RATE_LIMITED_MESSAGE
+              : `Couldn't load ${noun}. ${error?.message}`}
           </span>
           <span className="shrink-0 font-medium text-foreground underline">
-            Try again
+            {secondsLeft > 0 ? `Try again in ${secondsLeft}s` : 'Try again'}
           </span>
         </StatusRow>
       ) : (

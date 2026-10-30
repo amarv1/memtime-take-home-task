@@ -8,7 +8,7 @@ import { ENTRIES_PAGE_SIZE } from '@/features/timeEntries/api'
 import { EntriesPagination } from '@/features/timeEntries/EntriesPagination'
 import { EntriesTable } from '@/features/timeEntries/EntriesTable'
 import { useTaskEntries } from '@/features/timeEntries/hooks'
-import { ApiError } from '@/lib/api'
+import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
 
 const PAGE_PATTERN = /^[1-9]\d{0,6}$/
 
@@ -82,12 +82,7 @@ export function TaskEntriesPage() {
         {taskId === null ? (
           <p className="text-sm text-muted-foreground">That task link isn't valid.</p>
         ) : entries.isError ? (
-          <div role="alert" className="flex flex-wrap items-center gap-3 text-sm">
-            <p>{errorMessage(entries.error)}</p>
-            <Button variant="outline" size="sm" onClick={() => void entries.refetch()}>
-              Try again
-            </Button>
-          </div>
+          <EntriesError error={entries.error} onRetry={() => void entries.refetch()} />
         ) : !entries.data ? (
           <Loading />
         ) : entries.data.total === 0 ? (
@@ -110,11 +105,20 @@ export function TaskEntriesPage() {
   )
 }
 
-function errorMessage(error: Error): string {
-  if (error instanceof ApiError && error.status === 429) {
-    return 'Memtime is receiving too many requests right now. Wait a minute, then try again.'
-  }
-  return `Couldn't load time entries. ${error.message}`
+function EntriesError({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const secondsLeft = useCountdown(error)
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-3 text-sm">
+      <p>
+        {isRateLimited(error)
+          ? RATE_LIMITED_MESSAGE
+          : `Couldn't load time entries. ${error.message}`}
+      </p>
+      <Button variant="outline" size="sm" disabled={secondsLeft > 0} onClick={onRetry}>
+        {secondsLeft > 0 ? `Try again in ${secondsLeft}s` : 'Try again'}
+      </Button>
+    </div>
+  )
 }
 
 /** The first load can take a few seconds: the server reads all of the user's entries. */

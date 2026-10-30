@@ -164,14 +164,18 @@ describe('TaskEntriesPage', () => {
   it('explains a rate limit', async () => {
     server.use(
       http.get('/api/tasks/:taskId/entries', () =>
-        HttpResponse.json({ error: 'raw' }, { status: 429 }),
+        HttpResponse.json(
+          { error: 'raw' },
+          { status: 429, headers: { 'Retry-After': '23' } },
+        ),
       ),
     )
 
     renderAt('/tasks/398/entries')
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/too many requests/i)
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).not.toHaveTextContent('raw')
+    expect(screen.getByRole('button', { name: 'Try again in 23s' })).toBeDisabled()
   })
 
   it('links to the form for adding an entry', async () => {
