@@ -16,6 +16,7 @@ We will use cookie sessions that hold the key in server memory:
 - A session lasts 1 hour from sign in. The limit is absolute: activity does not extend it. Expired sessions are rejected when read and swept every minute.
 - Signing in again replaces the old session. Signing out deletes it.
 - `/api/*` routes that call Memtime use a `requireSession` middleware to get the key.
+- If Memtime answers 401 to a call made with a session's key (the key was revoked or changed mid-session), the route throws `MemtimeKeyRejectedError`. An error middleware then deletes the session, clears the cookie and responds 401, so the frontend's existing 401 handler signs the user out. Memtime returns 401 for a bad or missing key, so that is the only status that ends a session this way.
 
 We will not add a CSRF token for now. `SameSite=Strict` keeps the cookie off cross-site requests, and the API only accepts JSON.
 
@@ -25,4 +26,4 @@ We will not add a CSRF token for now. `SameSite=Strict` keeps the cookie off cro
 - Sessions are lost when the server restarts, and users sign in again.
 - It works for a single server instance only. Running several instances needs a shared store such as Redis; the session store is small and isolated so it can be swapped.
 - The key stays in memory for up to an hour, so a memory dump of the server would expose it. We accept this for now.
-- A user who changes or revokes their key is only noticed on the next upstream call, which fails with 401.
+- A user who changes or revokes their key is only noticed on the next upstream call. That call ends the session (see above), so the user sees one failed request and is then sent to sign in again.
