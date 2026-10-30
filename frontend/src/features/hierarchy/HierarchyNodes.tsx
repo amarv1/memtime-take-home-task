@@ -7,10 +7,12 @@ import { childKey, useTree } from './treeContext'
 
 export function ClientItem({ client }: { client: Client }) {
   const nodeKey = `client:${client.id}`
+  const { target } = useTree()
   return (
     <TreeItem
       level={1}
       nodeKey={nodeKey}
+      ancestor={target?.clientId === client.id}
       name={client.name}
       childrenQueryKey={hierarchyKeys.projects(client.id)}
       details={<StatusBadge status={client.status} />}
@@ -43,10 +45,12 @@ function ProjectRows({ clientId, parentKey }: { clientId: number; parentKey: str
 }
 
 function ProjectItem({ project, nodeKey }: { project: Project; nodeKey: string }) {
+  const { target } = useTree()
   return (
     <TreeItem
       level={2}
       nodeKey={nodeKey}
+      ancestor={target?.projectId === project.id}
       name={project.name}
       childrenQueryKey={hierarchyKeys.tasks(project.id)}
       details={<StatusBadge status={project.status} />}

@@ -10,3 +10,7 @@ export const rowClass =
 // from the focus ring without relying on colour alone; `aria-selected` carries the meaning.
 export const selectedRowClass =
   'bg-accent text-accent-foreground shadow-[inset_3px_0_0_var(--color-primary)]'
+
+// The client and project that hold the selected task. Marked even while collapsed, so a
+// closed client still shows where the task is. `aria-current` carries the meaning.
+export const ancestorRowClass = 'bg-primary/5 text-primary'

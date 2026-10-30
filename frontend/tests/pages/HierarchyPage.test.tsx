@@ -5,16 +5,13 @@ import { renderWithProviders } from '../support/utils'
 import { HierarchyPage } from '@/pages/HierarchyPage'
 
 describe('HierarchyPage', () => {
-  it('renders the heading, help text and the tree', async () => {
+  it('asks for a task when none is selected', () => {
     mockHierarchy()
 
     renderWithProviders(<HierarchyPage />)
 
-    expect(
-      screen.getByRole('heading', { name: 'Clients & projects' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Select a task' })).toBeInTheDocument()
     expect(screen.getByText(/expand a client to see its projects/i)).toBeInTheDocument()
-    expect(await screen.findByRole('tree')).toBeInTheDocument()
     expect(document.title).toBe('Clients · Memtime')
   })
 
@@ -29,5 +26,6 @@ describe('HierarchyPage', () => {
     )
 
     await waitFor(() => expect(document.title).toBe('Design homepage · Memtime'))
+    expect(screen.getByRole('heading', { name: 'Design homepage' })).toBeInTheDocument()
   })
 })

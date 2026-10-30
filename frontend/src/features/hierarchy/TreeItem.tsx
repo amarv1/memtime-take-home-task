@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
-import { indent, rowClass, selectedRowClass } from './rowStyle'
+import { ancestorRowClass, indent, rowClass, selectedRowClass } from './rowStyle'
 import { useTree } from './treeContext'
 
 interface Props {
@@ -17,6 +17,8 @@ interface Props {
   children?: ReactNode
   /** Only for selectable items (tasks). Sets `aria-selected`. */
   selected?: boolean
+  /** Holds the selected task; marked so it can be found again while collapsed. */
+  ancestor?: boolean
   onSelect?: () => void
 }
 
@@ -29,6 +31,7 @@ export function TreeItem({
   childrenQueryKey,
   children,
   selected,
+  ancestor,
   onSelect,
 }: Props) {
   const { tabKey, isExpanded, toggle, onSelectedRow } = useTree()
@@ -47,6 +50,7 @@ export function TreeItem({
       aria-level={level}
       aria-expanded={expandable ? expanded : undefined}
       aria-selected={selected}
+      aria-current={ancestor ? true : undefined}
       aria-busy={expanded && childrenQueryKey && fetching > 0 ? true : undefined}
       aria-labelledby={nameId}
       tabIndex={nodeKey === tabKey ? 0 : -1}
@@ -57,7 +61,11 @@ export function TreeItem({
       {/* Keyboard users toggle through the tree's own key handler (Enter, Space, arrows). */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div
-        className={cn(rowClass, selected && selectedRowClass)}
+        className={cn(
+          rowClass,
+          ancestor && ancestorRowClass,
+          selected && selectedRowClass,
+        )}
         style={indent(level)}
         onClick={expandable ? () => toggle(nodeKey) : undefined}
       >
@@ -75,6 +83,9 @@ export function TreeItem({
         <span id={nameId} className="truncate font-medium">
           {name}
         </span>
+        {ancestor && (
+          <span className="size-2 shrink-0 rounded-full bg-primary" aria-hidden />
+        )}
         {details}
       </div>
       {expanded && <ul role="group">{children}</ul>}

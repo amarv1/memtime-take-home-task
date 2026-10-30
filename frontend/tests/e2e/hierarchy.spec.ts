@@ -76,7 +76,7 @@ test('browses clients, projects and tasks, loading each level on expand', async 
 
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Clients & projects' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Select a task' })).toBeVisible()
   const client = page.getByRole('treeitem', { name: 'Acme Corp' })
   await expect(client).toBeVisible()
   expect(calls).toEqual(['/api/clients?limit=100&offset=0'])
@@ -112,5 +112,12 @@ test('opens a task link with its client and project expanded', async ({ page }) 
     'true',
   )
   await expect(page).toHaveTitle('Design homepage · Memtime')
+
+  // Collapsing the client keeps it marked, so the task can be found again.
+  await page.getByRole('treeitem', { name: 'Acme Corp' }).getByText('Acme Corp').click()
+  await expect(page.getByRole('treeitem', { name: 'Acme Corp' })).toHaveAttribute(
+    'aria-current',
+    'true',
+  )
   expect(calls).toHaveLength(5)
 })

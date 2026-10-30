@@ -627,6 +627,28 @@ describe('HierarchyTree', () => {
       expect(requests.slice(2)).toEqual(['/api/projects/101', PROJECTS, TASKS])
     })
 
+    it('marks the client and project that hold the task, even after collapsing', async () => {
+      mockHierarchy()
+      const { user } = renderAt('/tasks/399')
+      await screen.findByRole('treeitem', { name: 'Write copy' })
+
+      expect(item('Acme Corp')).toHaveAttribute('aria-current', 'true')
+      expect(item('Website')).toHaveAttribute('aria-current', 'true')
+      expect(item('Write copy')).not.toHaveAttribute('aria-current')
+
+      await toggle(user, 'Acme Corp')
+
+      expect(item('Acme Corp')).toHaveAttribute('aria-current', 'true')
+    })
+
+    it('marks nothing when no task is selected', async () => {
+      mockHierarchy()
+      renderAt('/')
+      await screen.findByRole('treeitem', { name: 'Acme Corp' })
+
+      expect(item('Acme Corp')).not.toHaveAttribute('aria-current')
+    })
+
     it('says it is opening the task while the path resolves', async () => {
       mockHierarchy()
       let release: () => void = () => undefined
