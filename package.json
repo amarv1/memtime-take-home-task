@@ -1,0 +1,23 @@
+{
+  "name": "memtime",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "pnpm -r --parallel --stream dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "format:check": "pnpm -r format:check && prettier --check *.md *.json *.yaml docs .github",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter memtime-frontend test:e2e",
+    "check": "pnpm -r check"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.27.0",
+  "devDependencies": {
+    "prettier": "catalog:"
+  }
+}

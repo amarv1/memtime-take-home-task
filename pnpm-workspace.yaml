@@ -1,0 +1,22 @@
+packages:
+  - frontend
+  - server
+
+# Versions shared by both packages. Packages refer to them as "catalog:".
+catalog:
+  '@eslint/js': ^10.0.1
+  '@types/node': ^24.19.2
+  '@vitest/coverage-v8': ^5.0.5
+  eslint: ^10.13.0
+  eslint-config-prettier: ^10.1.8
+  globals: ^17.13.0
+  msw: ^3.0.3
+  prettier: ^3.9.10
+  typescript: ~6.0.3
+  typescript-eslint: ^8.72.1
+  vitest: ^5.0.5
+  zod: ^4.6.7
+
+# esbuild downloads its binary in a postinstall script.
+onlyBuiltDependencies:
+  - esbuild
