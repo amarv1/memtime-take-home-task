@@ -19,5 +19,5 @@ Memtime allows 15 requests per 60 seconds per API key and answers 429 beyond tha
 
 - Calls made outside this app are only seen through the next response's headers.
 - Loading a cold set of time entries now stops after about 13 pages instead of running into Memtime's 429.
-- The reserve covers a typical save (task lookup and the write). A save whose checks must first load the entries cold can still run out.
+- The reserve covers a typical save (task lookup and the write). A save whose checks must first load the entries cold can still run out. A save that joins a cold load started by a page view and finds it refused at the reserve loads again as a save.
 - A queue that waits instead of failing can later replace the gate's internals without changing its callers.

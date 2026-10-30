@@ -5,9 +5,11 @@ import type { Cache } from '../../src/cache/memoryCache.ts'
 import { logger } from '../../src/logger.ts'
 import { CircuitOpenError } from '../../src/memtime/circuitBreaker.ts'
 import { createMemtimeClient } from '../../src/memtime/memtimeClient.ts'
+import type { MemtimeResponse } from '../../src/memtime/memtimeClient.ts'
 import { RateLimitedError } from '../../src/memtime/rateLimit.ts'
 import { MemtimeKeyRejectedError } from '../../src/middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../../src/middleware/errorHandler.ts'
+import { runInRequest } from '../../src/requestId.ts'
 import { createTimeEntryService } from '../../src/timeEntries/timeEntryService.ts'
 import type { TimeEntry } from '../../src/timeEntries/timeEntryService.ts'
 import { server } from '../support/server.ts'
@@ -110,6 +112,41 @@ describe('timeEntryService', () => {
 
     expect(a).toBe(b)
     expect(calls).toHaveLength(1)
+  })
+
+  it("lets a save that joined a page view's refused load load again as a save", async () => {
+    let attempt = 0
+    server.use(
+      http.get(`${BASE}/time-entries`, async () => {
+        calls.push({ offset: null, auth: null })
+        await delay(20)
+        return HttpResponse.json(many(3))
+      }),
+    )
+    const gate = {
+      run: async (
+        _key: string,
+        kind: 'read' | 'write',
+        call: () => Promise<MemtimeResponse>,
+      ) => {
+        attempt += 1
+        if (kind === 'read') throw new RateLimitedError(30)
+        return call()
+      },
+    }
+    const s = createTimeEntryService({
+      client: createMemtimeClient({ memtimeApiUrl: BASE, gate }),
+      cache,
+    })
+
+    const view = s.getAllEntries(KEY).catch((e: unknown) => e)
+    const save = runInRequest({ requestId: 'r', writing: true }, () =>
+      s.getAllEntries(KEY),
+    )
+
+    expect(await view).toBeInstanceOf(RateLimitedError)
+    expect(await save).toHaveLength(3)
+    expect(attempt).toBe(2)
   })
 
   it('loads separately for different keys', async () => {

@@ -5,6 +5,7 @@ import type { MemtimeClient, MemtimeResponse } from '../memtime/memtimeClient.ts
 import { MemtimeKeyRejectedError } from '../middleware/endSessionOnRevokedKey.ts'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { RateLimitedError, throwIfRateLimited } from '../memtime/rateLimit.ts'
+import { isWritingRequest } from '../requestId.ts'
 
 export interface TimeEntry {
   id: number
@@ -60,7 +61,8 @@ export type TimeEntryService = ReturnType<typeof createTimeEntryService>
 /** Loads all of a key owner's time entries (the API has no per-task filter) and caches them. */
 export function createTimeEntryService({ client, cache }: Options) {
   // One load per key at a time; callers that arrive meanwhile wait for the same one.
-  const inFlight = new Map<string, Promise<TimeEntry[]>>()
+  // `writing`: started while handling a save, so it may use the calls kept in reserve for writes.
+  const inFlight = new Map<string, { promise: Promise<TimeEntry[]>; writing: boolean }>()
   // Bumped on every write, so a load that started before it is not cached. One number per key that ever wrote.
   const generations = new Map<string, number>()
 
@@ -118,13 +120,11 @@ export function createTimeEntryService({ client, cache }: Options) {
     try {
       response = await call()
     } catch (err) {
-      if (
-        !(
-          err instanceof MemtimeKeyRejectedError ||
-          err instanceof CircuitOpenError ||
-          err instanceof RateLimitedError
-        )
-      )
+      if (!(
+        err instanceof MemtimeKeyRejectedError ||
+        err instanceof CircuitOpenError ||
+        err instanceof RateLimitedError
+      ))
         await invalidate(apiKey)
       throw err
     }
@@ -163,29 +163,40 @@ export function createTimeEntryService({ client, cache }: Options) {
     throw new HttpError(502, 'Memtime sent an unexpected answer.')
   }
 
+  async function getAllEntries(apiKey: string): Promise<TimeEntry[]> {
+    const key = cacheKey(apiKey)
+    const cached = await cache.get(key)
+    if (cached) return cached
+
+    const writing = isWritingRequest()
+    const running = inFlight.get(key)
+    if (running) {
+      if (running.writing || !writing) return running.promise
+      // A save joined a load a page view started, which stops at the reserve. If that
+      // refused, load again as a save, which may use the reserve.
+      return running.promise.catch((err: unknown) => {
+        if (err instanceof RateLimitedError) return getAllEntries(apiKey)
+        throw err
+      })
+    }
+
+    // Only a complete list is cached; any failure leaves the cache untouched.
+    // A write meanwhile makes the list stale: its waiting callers still get it, but it is not cached.
+    const generation = generations.get(key) ?? 0
+    const promise: Promise<TimeEntry[]> = load(apiKey)
+      .then(async (entries) => {
+        if ((generations.get(key) ?? 0) === generation) await cache.set(key, entries)
+        return entries
+      })
+      .finally(() => {
+        if (inFlight.get(key)?.promise === promise) inFlight.delete(key)
+      })
+    inFlight.set(key, { promise, writing })
+    return promise
+  }
+
   return {
-    async getAllEntries(apiKey: string): Promise<TimeEntry[]> {
-      const key = cacheKey(apiKey)
-      const cached = await cache.get(key)
-      if (cached) return cached
-
-      const running = inFlight.get(key)
-      if (running) return running
-
-      // Only a complete list is cached; any failure leaves the cache untouched.
-      // A write meanwhile makes the list stale: its waiting callers still get it, but it is not cached.
-      const generation = generations.get(key) ?? 0
-      const promise: Promise<TimeEntry[]> = load(apiKey)
-        .then(async (entries) => {
-          if ((generations.get(key) ?? 0) === generation) await cache.set(key, entries)
-          return entries
-        })
-        .finally(() => {
-          if (inFlight.get(key) === promise) inFlight.delete(key)
-        })
-      inFlight.set(key, promise)
-      return promise
-    },
+    getAllEntries,
 
     /** Creates an entry for the key's owner, then drops the cached list (also when the outcome is unknown). */
     async createEntry(apiKey: string, entry: NewEntry): Promise<TimeEntry> {
