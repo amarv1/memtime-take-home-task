@@ -68,6 +68,8 @@ export type TimeEntryService = ReturnType<typeof createTimeEntryService>
 export function createTimeEntryService({ client, cache }: Options) {
   // One load per key at a time; callers that arrive meanwhile wait for the same one.
   const inFlight = new Map<string, Promise<TimeEntry[]>>()
+  // Bumped on every write, so a load that started before it is not cached. One number per key that ever wrote.
+  const generations = new Map<string, number>()
 
   async function fetchPage(apiKey: string, offset: number): Promise<TimeEntry[]> {
     const { status, headers, body } = await client.get(
@@ -103,7 +105,11 @@ export function createTimeEntryService({ client, cache }: Options) {
   }
 
   async function invalidate(apiKey: string): Promise<void> {
-    await cache.delete(cacheKey(apiKey))
+    const key = cacheKey(apiKey)
+    generations.set(key, (generations.get(key) ?? 0) + 1)
+    // Later callers start a fresh load instead of joining one that began before the write.
+    inFlight.delete(key)
+    await cache.delete(key)
   }
 
   async function saved(
@@ -147,12 +153,16 @@ export function createTimeEntryService({ client, cache }: Options) {
       if (running) return running
 
       // Only a complete list is cached; any failure leaves the cache untouched.
-      const promise = load(apiKey)
+      // A write meanwhile makes the list stale: its waiting callers still get it, but it is not cached.
+      const generation = generations.get(key) ?? 0
+      const promise: Promise<TimeEntry[]> = load(apiKey)
         .then(async (entries) => {
-          await cache.set(key, entries)
+          if ((generations.get(key) ?? 0) === generation) await cache.set(key, entries)
           return entries
         })
-        .finally(() => inFlight.delete(key))
+        .finally(() => {
+          if (inFlight.get(key) === promise) inFlight.delete(key)
+        })
       inFlight.set(key, promise)
       return promise
     },

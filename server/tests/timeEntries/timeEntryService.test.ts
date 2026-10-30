@@ -130,6 +130,88 @@ describe('timeEntryService', () => {
     expect(calls).toHaveLength(2)
   })
 
+  describe('writes during a load', () => {
+    const fresh = [buildEntry(1, 5), buildEntry(2, 5)]
+    let release: () => void
+    let hold: Promise<void>
+
+    // The first load answers with the old list once released; later loads get the fresh one at once.
+    function holdFirstLoad() {
+      hold = new Promise<void>((resolve) => (release = resolve))
+      let first = true
+      server.use(
+        http.get(`${BASE}/time-entries`, async () => {
+          calls.push({ offset: null, auth: null })
+          if (!first) return HttpResponse.json(fresh)
+          first = false
+          await hold
+          return HttpResponse.json([buildEntry(1, 5)])
+        }),
+        http.post(`${BASE}/time-entries`, () => HttpResponse.json(buildEntry(2, 5))),
+      )
+    }
+
+    const newEntry = { taskId: 5, comment: 'x', start: 'a', end: 'b' }
+
+    it('does not cache a load that started before a write', async () => {
+      holdFirstLoad()
+      const s = service()
+      const old = s.getAllEntries(KEY)
+      await vi.waitFor(() => expect(calls).toHaveLength(1))
+
+      await s.createEntry(KEY, newEntry)
+      release()
+      await expect(old).resolves.toHaveLength(1)
+
+      await expect(s.getAllEntries(KEY)).resolves.toEqual(fresh)
+      expect(calls).toHaveLength(2)
+    })
+
+    it('starts a new load for a call made after the write, not joining the old one', async () => {
+      holdFirstLoad()
+      const s = service()
+      const old = s.getAllEntries(KEY)
+      await vi.waitFor(() => expect(calls).toHaveLength(1))
+
+      await s.invalidate(KEY)
+      const entries = await s.getAllEntries(KEY)
+
+      expect(entries).toEqual(fresh)
+      expect(calls).toHaveLength(2)
+      release()
+      await old
+    })
+
+    it('keeps sharing the newer load after the old one settles', async () => {
+      holdFirstLoad()
+      const s = service()
+      const old = s.getAllEntries(KEY)
+      await vi.waitFor(() => expect(calls).toHaveLength(1))
+      await s.invalidate(KEY)
+      // Hold the new load too, so it is still running when the old one settles.
+      let releaseNew: () => void = vi.fn()
+      const holdNew = new Promise<void>((resolve) => (releaseNew = resolve))
+      server.use(
+        http.get(`${BASE}/time-entries`, async () => {
+          calls.push({ offset: null, auth: null })
+          await holdNew
+          return HttpResponse.json(fresh)
+        }),
+      )
+      const newer = s.getAllEntries(KEY)
+      await vi.waitFor(() => expect(calls).toHaveLength(2))
+
+      release()
+      await old
+      const joined = s.getAllEntries(KEY)
+      releaseNew()
+
+      const [a, b] = await Promise.all([newer, joined])
+      expect(a).toBe(b)
+      expect(calls).toHaveLength(2)
+    })
+  })
+
   describe('failures', () => {
     it('maps 429 to a friendly 429 and passes retry-after', async () => {
       server.use(
