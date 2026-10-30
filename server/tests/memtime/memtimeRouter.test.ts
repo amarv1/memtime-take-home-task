@@ -22,6 +22,8 @@ const routes = [
     upstream: '/clients/7/projects',
   },
   { name: 'tasks', path: '/api/projects/9/tasks', upstream: '/projects/9/tasks' },
+  { name: 'project', path: '/api/projects/9', upstream: '/projects/9' },
+  { name: 'task', path: '/api/tasks/42', upstream: '/tasks/42' },
 ] as const
 
 describe('memtimeRouter', () => {
@@ -35,7 +37,7 @@ describe('memtimeRouter', () => {
 
   const cookie = () => `memtime_sid=${store.create(KEY).id}`
 
-  /** Registers an upstream handler on any of the three paths and records what it saw. */
+  /** Registers an upstream handler on any of the proxied paths and records what it saw. */
   function mockUpstream(
     respond: () => Response | Promise<Response> = () => HttpResponse.json([{ id: 1 }]),
   ) {
@@ -52,6 +54,8 @@ describe('memtimeRouter', () => {
       http.get(`${BASE}/clients`, handler),
       http.get(`${BASE}/clients/:id/projects`, handler),
       http.get(`${BASE}/projects/:id/tasks`, handler),
+      http.get(`${BASE}/projects/:id`, handler),
+      http.get(`${BASE}/tasks/:id`, handler),
     )
     return seen
   }
@@ -219,8 +223,17 @@ describe('memtimeRouter', () => {
 
         expect(clients.status).toBe(400)
         expect(clients.body).toEqual({ error: 'Invalid client id' })
+        const project = await request(app)
+          .get(`/api/projects/${id}`)
+          .set('Cookie', cookie())
+        const task = await request(app).get(`/api/tasks/${id}`).set('Cookie', cookie())
+
         expect(projects.status).toBe(400)
         expect(projects.body).toEqual({ error: 'Invalid project id' })
+        expect(project.status).toBe(400)
+        expect(project.body).toEqual({ error: 'Invalid project id' })
+        expect(task.status).toBe(400)
+        expect(task.body).toEqual({ error: 'Invalid task id' })
         expect(seen).toHaveLength(0)
       },
     )

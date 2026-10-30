@@ -44,7 +44,7 @@ function allowedQuery(query: Record<string, unknown>): string {
 }
 
 /**
- * Read-only proxy for the client, project and task lists. It adds the session's
+ * Read-only proxy for the client, project and task lists, and for single task and project lookups. It adds the session's
  * API key and passes the upstream answer through: no caching, throttling or retry.
  */
 export function memtimeRouter({
@@ -133,6 +133,16 @@ export function memtimeRouter({
       req.query,
       '/api/projects/:projectId/tasks',
     )
+  })
+
+  router.get('/projects/:projectId', session, async (req, res) => {
+    const projectId = parseId(req.params.projectId, 'project')
+    await forward(res, `/projects/${projectId}`, req.query, '/api/projects/:projectId')
+  })
+
+  router.get('/tasks/:taskId', session, async (req, res) => {
+    const taskId = parseId(req.params.taskId, 'task')
+    await forward(res, `/tasks/${taskId}`, req.query, '/api/tasks/:taskId')
   })
 
   return router
