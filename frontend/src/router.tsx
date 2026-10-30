@@ -3,7 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router'
 import { AppLayout } from '@/components/AppLayout'
 import { RouteError } from '@/components/RouteError'
 import { RequireAuth } from '@/features/auth/RequireAuth'
-import { HomePage } from '@/pages/HomePage'
+import { HierarchyPage } from '@/pages/HierarchyPage'
 import { LoginPage } from '@/pages/LoginPage'
 
 export const routes: RouteObject[] = [
@@ -17,7 +17,7 @@ export const routes: RouteObject[] = [
         children: [
           {
             element: <AppLayout />,
-            children: [{ path: '/', element: <HomePage /> }],
+            children: [{ path: '/', element: <HierarchyPage /> }],
           },
         ],
       },

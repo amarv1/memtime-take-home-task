@@ -1,0 +1,94 @@
+import type { ReactNode } from 'react'
+import { Spinner, StatusRow } from './StatusRow'
+import { childKey } from './treeContext'
+
+/** The part of an infinite query the list needs. */
+export interface ListQuery<T> {
+  data: T[] | undefined
+  isPending: boolean
+  isError: boolean
+  error: Error | null
+  isFetchNextPageError: boolean
+  isFetchingNextPage: boolean
+  hasNextPage: boolean
+  fetchNextPage: () => unknown
+  refetch: () => unknown
+}
+
+interface Props<T> {
+  query: ListQuery<T>
+  level: number
+  parentKey: string
+  /** Plural noun used in messages, e.g. "projects". */
+  noun: string
+  render: (item: T) => ReactNode
+}
+
+/** The rows of one level: its items, then whatever state the query is in. */
+export function NodeList<T extends { id: number }>({
+  query,
+  level,
+  parentKey,
+  noun,
+  render,
+}: Props<T>) {
+  const { data, isPending, isError, error, isFetchNextPageError } = query
+  const key = (segment: string) => childKey(parentKey, `status:${segment}`)
+
+  if (isPending) {
+    return (
+      <StatusRow level={level} nodeKey={key('loading')}>
+        <Spinner />
+        Loading {noun}…
+      </StatusRow>
+    )
+  }
+
+  const items = data ?? []
+
+  return (
+    <>
+      {items.map((item) => render(item))}
+      {items.length === 0 && !isError && (
+        <StatusRow level={level} nodeKey={key('empty')}>
+          No {noun}
+        </StatusRow>
+      )}
+      {isError ? (
+        <StatusRow
+          level={level}
+          nodeKey={key('error')}
+          // A failed next page is retried as a next page; anything else as a reload.
+          onActivate={() =>
+            void (isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+          }
+        >
+          <span className="min-w-0 truncate">
+            Couldn't load {noun}. {error?.message}
+          </span>
+          <span className="shrink-0 font-medium text-foreground underline">
+            Try again
+          </span>
+        </StatusRow>
+      ) : (
+        query.hasNextPage && (
+          <StatusRow
+            level={level}
+            nodeKey={key('load-more')}
+            onActivate={() => void query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+          >
+            {query.isFetchingNextPage ? (
+              <>
+                <Spinner />
+                Loading more…
+              </>
+            ) : (
+              <>Load more {noun}</>
+            )}
+          </StatusRow>
+        )
+      )}
+    </>
+  )
+}

@@ -23,6 +23,9 @@ test('signs in and out with the API mocked', async ({ page }) => {
       : route.fulfill({ status: 401, json: { error: 'Not signed in' } })
   })
 
+  // The home page lists clients once signed in.
+  await page.route('**/api/clients*', (route) => route.fulfill({ json: [] }))
+
   await page.goto('/')
   await expect(page).toHaveURL(/\/login$/)
 

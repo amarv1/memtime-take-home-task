@@ -5,10 +5,12 @@ import { http, HttpResponse } from 'msw'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { createQueryClient } from '@/lib/queryClient'
 import { server } from './support/server'
+import { mockHierarchy } from './support/hierarchy'
 import { routes } from '@/router'
 
 describe('routes', () => {
   it('sends a signed-out visitor to login, then home after signing in', async () => {
+    mockHierarchy()
     let signedIn = false
     server.use(
       http.get('/api/session', () =>
@@ -41,6 +43,7 @@ describe('routes', () => {
   })
 
   it('redirects unknown paths home', async () => {
+    mockHierarchy()
     server.use(
       http.get('/api/session', () =>
         HttpResponse.json({ expiresAt: '2030-01-01T00:00:00.000Z' }),
