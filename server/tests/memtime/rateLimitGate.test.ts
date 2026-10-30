@@ -38,10 +38,18 @@ describe('ratelimit-header-parser on Memtime headers', () => {
 
 describe('createRateLimitGate', () => {
   let time = 1_000_000
-  const gate = () => createRateLimitGate({ now: () => time })
+  const sleeps: number[] = []
+  // A wait just moves the fake clock forward.
+  const sleep = (ms: number) => {
+    sleeps.push(ms)
+    time += ms
+    return Promise.resolve()
+  }
+  const gate = () => createRateLimitGate({ now: () => time, sleep })
 
   beforeEach(() => {
     time = 1_000_000
+    sleeps.length = 0
     vi.spyOn(logger, 'warn').mockImplementation(vi.fn())
   })
   afterEach(() => {
@@ -232,5 +240,71 @@ describe('createRateLimitGate', () => {
     await g.run('other-key', 'read', call)
 
     expect(call).toHaveBeenCalledOnce()
+  })
+
+  describe('short wait', () => {
+    /** Learns `remaining` calls left, with the window ending in `resetIn` seconds. */
+    const learnWithReset = (
+      g: ReturnType<typeof gate>,
+      remaining: number,
+      resetIn: number,
+    ) => g.run(KEY, 'read', () => Promise.resolve(reply(remaining, { resetIn })))
+
+    it('waits for a reset within 5 s, then sends the read once', async () => {
+      const g = gate()
+      await learnWithReset(g, 2, 3)
+      let sentAt = 0
+      const call = vi.fn(() => {
+        sentAt = time
+        return Promise.resolve(reply(null))
+      })
+
+      await g.run(KEY, 'read', call)
+
+      expect(call).toHaveBeenCalledOnce()
+      expect(sleeps).toEqual([3_000])
+      expect(sentAt).toBe(1_000_000 + 3_000)
+    })
+
+    it('waits for a write at 0 remaining', async () => {
+      const g = gate()
+      await learnWithReset(g, 0, 2)
+      const call = vi.fn(() => Promise.resolve(reply(null)))
+
+      await g.run(KEY, 'write', call)
+
+      expect(call).toHaveBeenCalledOnce()
+      expect(sleeps).toEqual([2_000])
+    })
+
+    it('fails at once when the reset is further than 5 s', async () => {
+      const g = gate()
+      await learnWithReset(g, 0, 6)
+      const call = vi.fn()
+
+      const error = await g.run(KEY, 'read', call).catch((e: unknown) => e)
+
+      expect(error).toMatchObject({ status: 429, headers: { 'Retry-After': '6' } })
+      expect(call).not.toHaveBeenCalled()
+      expect(sleeps).toEqual([])
+    })
+
+    it('checks again after waking and fails if a new budget is used up', async () => {
+      const g = createRateLimitGate({
+        now: () => time,
+        sleep: (ms) => {
+          time += ms
+          // Meanwhile another response taught a new, used-up budget with a far reset.
+          return learnWithReset(g, 0, 40).then(() => undefined)
+        },
+      })
+      await learnWithReset(g, 0, 3)
+      const call = vi.fn()
+
+      const error = await g.run(KEY, 'write', call).catch((e: unknown) => e)
+
+      expect(error).toBeInstanceOf(RateLimitedError)
+      expect(call).not.toHaveBeenCalled()
+    })
   })
 })

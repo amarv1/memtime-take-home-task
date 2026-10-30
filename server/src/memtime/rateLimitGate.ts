@@ -8,7 +8,10 @@ import { RateLimitedError } from './rateLimit.ts'
 interface Options {
   /** Calls kept back for writes: reads stop when this many are left. */
   reserveForWrites?: number
+  /** Longest wait for the window to reset before failing at once instead. */
+  maxWaitMs?: number
   now?: () => number
+  sleep?: (ms: number) => Promise<void>
 }
 
 interface Budget {
@@ -19,18 +22,26 @@ interface Budget {
 // Two responses of one window can report slightly different reset times.
 const SAME_WINDOW_JITTER_MS = 2_000
 
+// Unref'd: a pending wait must not hold the process open on shutdown.
+const timerSleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms).unref()
+  })
+
 export type RateLimitGate = ReturnType<typeof createRateLimitGate>
 
 /**
  * Tracks how many calls each API key has left in Memtime's rate-limit window, from the
- * `ratelimit-*` headers of its responses. When a read would use up the budget, `run` throws
- * `RateLimitedError` without calling Memtime; a few calls stay in reserve for writes. A key
- * not seen yet is let through. Kept in memory, per instance.
- * Callers only see `run`, so a queue could replace the inside later.
+ * `ratelimit-*` headers of its responses. When the budget is used up (reads stop with a few
+ * calls kept back for writes), `run` waits for the window to reset if that takes at most
+ * `maxWaitMs`, then checks again; otherwise it throws `RateLimitedError` without calling
+ * Memtime. A key not seen yet is let through. Kept in memory, per instance.
  */
 export function createRateLimitGate({
   reserveForWrites = 2,
+  maxWaitMs = 5_000,
   now = Date.now,
+  sleep = timerSleep,
 }: Options = {}) {
   const budgets = new Map<string, Budget>()
 
@@ -74,20 +85,26 @@ export function createRateLimitGate({
     call: () => Promise<MemtimeResponse>,
   ): Promise<MemtimeResponse> {
     const id = hashApiKey(apiKey)
-    const at = now()
-    prune(at)
-
-    const budget = budgets.get(id)
+    const floor = kind === 'read' ? reserveForWrites : 0
     let counted: Budget | undefined
-    if (budget) {
-      const floor = kind === 'read' ? reserveForWrites : 0
-      if (budget.remaining <= floor) {
-        logger.warn(`Memtime rate limit reached, not sending a ${kind}`)
-        throw new RateLimitedError((budget.resetAt - at) / 1000)
+    for (;;) {
+      const at = now()
+      prune(at)
+      const budget = budgets.get(id)
+      if (!budget) break
+      if (budget.remaining > floor) {
+        // Before the call, so parallel requests are counted too.
+        budget.remaining -= 1
+        counted = budget
+        break
       }
-      // Before the call, so parallel requests are counted too.
-      budget.remaining -= 1
-      counted = budget
+      const waitMs = budget.resetAt - at
+      if (waitMs > maxWaitMs) {
+        logger.warn(`Memtime rate limit reached, not sending a ${kind}`)
+        throw new RateLimitedError(waitMs / 1000)
+      }
+      // The window ends soon: wait, then check again, as the budget may have changed.
+      await sleep(waitMs)
     }
 
     let response: MemtimeResponse

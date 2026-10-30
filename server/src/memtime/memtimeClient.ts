@@ -31,9 +31,9 @@ export type MemtimeClient = ReturnType<typeof createMemtimeClient>
  * Calls go through the circuit breaker: network failures, timeouts and 5xx count against it,
  * while any other answer (401 and 429 included) shows Memtime is up. While it is open, calls
  * throw `CircuitOpenError` without reaching Memtime.
- * Outside the breaker sits the rate-limit gate (a GET while serving a GET is a read, the rest are writes): it throws
- * `RateLimitedError` without a call when the key's budget is used up, so that is no failure for
- * the breaker.
+ * Outside the breaker sits the rate-limit gate (a GET while serving a GET is a read, the rest are writes): when the key's
+ * budget is used up it waits a few seconds for the window to reset, or else throws
+ * `RateLimitedError` without a call, so that is no failure for the breaker.
  */
 export function createMemtimeClient({
   memtimeApiUrl,
