@@ -127,7 +127,7 @@ describe('EditEntryPage', () => {
     mockUpdate()
     const { user, queryClient } = renderAt('/tasks/398/entries/7/edit')
     queryClient.setQueryData(['entries', 398, 1], { items: [], total: 0 })
-    await screen.findByLabelText('Comment')
+    await user.type(await screen.findByLabelText('Comment'), '!')
 
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
@@ -164,6 +164,124 @@ describe('EditEntryPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(message)
     expect(field('Comment')).toHaveValue('Fix the header!')
     expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps the seconds of a time that was not touched', async () => {
+    const exact = {
+      ...entry,
+      start: new Date('2025-01-01T09:00:30.123').toISOString(),
+      end: new Date('2025-01-01T10:05:45.500').toISOString(),
+    }
+    mockEntry(() => HttpResponse.json(exact))
+    const calls = mockUpdate()
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+
+    await user.type(await screen.findByLabelText('Comment'), '!')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await screen.findByText('Entries list')
+    expect(calls[0]?.body).toEqual({
+      comment: 'Fix the header!',
+      start: exact.start,
+      end: exact.end,
+    })
+  })
+
+  it('rounds a time the user changed to the minute they typed', async () => {
+    const exact = { ...entry, start: new Date('2025-01-01T09:00:30.123').toISOString() }
+    mockEntry(() => HttpResponse.json(exact))
+    const calls = mockUpdate()
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+    await screen.findByLabelText('Comment')
+
+    fill('Start', '2025-01-01T08:30')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await screen.findByText('Entries list')
+    expect(calls[0]?.body).toMatchObject({
+      start: new Date('2025-01-01T08:30').toISOString(),
+      end: exact.end,
+    })
+  })
+
+  it('sends nothing, says so and goes back when nothing changed', async () => {
+    const calls = mockUpdate()
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+    await screen.findByLabelText('Comment')
+
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText('Entries list')).toBeInTheDocument()
+    expect(calls).toEqual([])
+    expect(toast.info).toHaveBeenCalledWith('No changes to save')
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('saves a change to an old entry without asking', async () => {
+    const calls = mockUpdate()
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+
+    await user.type(await screen.findByLabelText('Comment'), '!')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText('Entries list')).toBeInTheDocument()
+    expect(calls).toHaveLength(1)
+  })
+
+  it('saves anyway after a 409, sending the confirmed codes', async () => {
+    let first = true
+    const calls = mockUpdate(() => {
+      if (!first) return HttpResponse.json(entry)
+      first = false
+      return HttpResponse.json(
+        {
+          error: 'Please confirm this time entry',
+          warnings: [
+            { code: 'long_duration', field: 'end', message: 'Longer than 12 hours' },
+          ],
+        },
+        { status: 409 },
+      )
+    })
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+    await screen.findByLabelText('Comment')
+
+    fill('End', '2025-01-01T22:00')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Longer than 12 hours')
+
+    await user.click(screen.getByRole('button', { name: 'Save anyway' }))
+
+    expect(await screen.findByText('Entries list')).toBeInTheDocument()
+    expect(calls[1]?.body).toMatchObject({ acceptedWarnings: ['long_duration'] })
+  })
+
+  it('shows the warnings of a 409', async () => {
+    mockUpdate(() =>
+      HttpResponse.json(
+        {
+          error: 'Please confirm this time entry',
+          warnings: [
+            {
+              code: 'overlap',
+              field: 'start',
+              message: 'Overlaps 2 of your other entries',
+              entries: [],
+            },
+          ],
+        },
+        { status: 409 },
+      ),
+    )
+    const { user } = renderAt('/tasks/398/entries/7/edit')
+
+    await user.type(await screen.findByLabelText('Comment'), '!')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Overlaps 2 of your other entries',
+    )
+    expect(screen.getByRole('button', { name: 'Save anyway' })).toBeInTheDocument()
   })
 
   it('goes back to the entries on cancel', async () => {

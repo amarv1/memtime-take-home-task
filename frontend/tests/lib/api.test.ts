@@ -84,6 +84,33 @@ describe('apiFetch', () => {
     })
   })
 
+  it('keeps the field of a 400 and the warnings of a 409', async () => {
+    const warnings = [{ code: 'overlap', field: 'start', message: 'Overlaps' }]
+    server.use(
+      http.get('/api/a', () =>
+        HttpResponse.json({ error: 'Bad', field: 'end', code: 'x' }, { status: 400 }),
+      ),
+      http.get('/api/b', () =>
+        HttpResponse.json({ error: 'Confirm', warnings }, { status: 409 }),
+      ),
+    )
+
+    await expect(apiFetch('/api/a')).rejects.toMatchObject({ field: 'end' })
+    await expect(apiFetch('/api/b')).rejects.toMatchObject({ status: 409, warnings })
+  })
+
+  it('ignores a field or warnings of the wrong type', async () => {
+    server.use(
+      http.get('/api/a', () =>
+        HttpResponse.json({ error: 'Bad', field: 3, warnings: 'x' }, { status: 409 }),
+      ),
+    )
+
+    const error = await apiFetch('/api/a').catch((e: unknown) => e)
+
+    expect(error).toMatchObject({ field: undefined, warnings: undefined })
+  })
+
   it('maps a network failure to status 0', async () => {
     server.use(http.get('/api/thing', () => HttpResponse.error()))
     await expect(apiFetch('/api/thing')).rejects.toMatchObject({

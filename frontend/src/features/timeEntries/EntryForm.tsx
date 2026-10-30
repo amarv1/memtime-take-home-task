@@ -1,33 +1,22 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import type { UseMutationResult } from '@tanstack/react-query'
-import { parseISO } from 'date-fns'
+import { useMemo, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
 import type { NewEntry, TimeEntry } from './api'
-import { toDateTimeInput } from './format'
-
-const MAX_COMMENT_LENGTH = 1000
-
-const schema = z
-  .object({
-    comment: z
-      .string()
-      .trim()
-      .min(1, 'Enter a comment')
-      .max(MAX_COMMENT_LENGTH, `Keep the comment under ${MAX_COMMENT_LENGTH} characters`),
-    start: z.string().min(1, 'Enter a start time'),
-    end: z.string().min(1, 'Enter an end time'),
-  })
-  .refine(({ start, end }) => !start || !end || new Date(end) > new Date(start), {
-    path: ['end'],
-    message: 'End must be after the start',
-  })
-type FormValues = z.infer<typeof schema>
+import {
+  buildSchema,
+  defaultValues,
+  isUnchanged,
+  toDraft,
+  valuesOf,
+  type FormValues,
+} from './entryDraft'
+import { WarningPanel } from './WarningPanel'
 
 interface Props {
   taskId: number
@@ -39,8 +28,12 @@ interface Props {
   /** Shown when the save answers 404. */
   notFoundMessage: string
   onSaved: (entry: TimeEntry) => void
+  /** Called instead of saving when an edit changes nothing. */
+  onUnchanged?: () => void
   onCancel: () => void
 }
+
+const FIELDS = ['comment', 'start', 'end']
 
 /** The task is fixed by the page, so it's shown but can't be changed here. */
 export function EntryForm({
@@ -51,28 +44,65 @@ export function EntryForm({
   submitLabel,
   notFoundMessage,
   onSaved,
+  onUnchanged,
   onCancel,
 }: Props) {
+  const schema = useMemo(() => buildSchema(entry), [entry])
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: entry ? valuesOf(entry) : defaults(),
+    defaultValues: entry ? valuesOf(entry) : defaultValues(),
   })
 
-  function onSubmit({ comment, start, end }: FormValues) {
+  // Codes of the warnings the user has confirmed since the last edit.
+  const [confirmed, setConfirmed] = useState<string[]>([])
+  // What "Save anyway" sends again: the draft of the last submit.
+  const lastDraft = useRef<NewEntry | null>(null)
+
+  const error = create.error instanceof ApiError ? create.error : undefined
+  const warnings = error?.status === 409 ? (error.warnings ?? []) : []
+  // A 400 the server pinned to a field shows under that field, not in the alert.
+  const serverField =
+    error?.status === 400 && error.field && FIELDS.includes(error.field)
+      ? error.field
+      : undefined
+  const fieldError = (field: keyof FormValues) =>
+    errors[field]?.message ?? (serverField === field ? error?.message : undefined)
+
+  function send(draft: NewEntry, accepted: string[]) {
     create.mutate(
-      {
-        comment,
-        // The inputs hold local time without a zone; this makes it an exact instant.
-        start: new Date(start).toISOString(),
-        end: new Date(end).toISOString(),
-      },
+      { ...draft, ...(accepted.length > 0 && { acceptedWarnings: accepted }) },
       { onSuccess: onSaved },
     )
   }
+
+  function onSubmit(values: FormValues) {
+    const draft = toDraft(values, entry)
+    if (entry && onUnchanged && isUnchanged(entry, draft)) {
+      onUnchanged()
+      return
+    }
+    lastDraft.current = draft
+    send(draft, confirmed)
+  }
+
+  function saveAnyway() {
+    if (!lastDraft.current) return
+    const accepted = [...new Set([...confirmed, ...warnings.map((w) => w.code)])]
+    setConfirmed(accepted)
+    send(lastDraft.current, accepted)
+  }
+
+  /** Any change makes the user's earlier confirmation, and what it was about, obsolete. */
+  function resetConfirmation() {
+    setConfirmed([])
+    create.reset()
+  }
+
+  const fieldProps = { onChange: resetConfirmation }
 
   return (
     <form
@@ -90,41 +120,50 @@ export function EntryForm({
         />
       </div>
 
-      <Field label="Comment" id="comment" error={errors.comment?.message}>
+      <Field label="Comment" id="comment" error={fieldError('comment')}>
         <Input
           id="comment"
           autoComplete="off"
           // eslint-disable-next-line jsx-a11y/no-autofocus -- the form is the point of this page
           autoFocus
           placeholder="What did you work on?"
-          aria-invalid={errors.comment ? true : undefined}
-          aria-describedby={errors.comment ? 'comment-error' : undefined}
-          {...register('comment', { onChange: () => create.reset() })}
+          aria-invalid={fieldError('comment') ? true : undefined}
+          aria-describedby={fieldError('comment') ? 'comment-error' : undefined}
+          {...register('comment', fieldProps)}
         />
       </Field>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Start" id="start" error={errors.start?.message}>
+        <Field label="Start" id="start" error={fieldError('start')}>
           <Input
             id="start"
             type="datetime-local"
-            aria-invalid={errors.start ? true : undefined}
-            aria-describedby={errors.start ? 'start-error' : undefined}
-            {...register('start', { onChange: () => create.reset() })}
+            aria-invalid={fieldError('start') ? true : undefined}
+            aria-describedby={fieldError('start') ? 'start-error' : undefined}
+            {...register('start', fieldProps)}
           />
         </Field>
-        <Field label="End" id="end" error={errors.end?.message}>
+        <Field label="End" id="end" error={fieldError('end')}>
           <Input
             id="end"
             type="datetime-local"
-            aria-invalid={errors.end ? true : undefined}
-            aria-describedby={errors.end ? 'end-error' : undefined}
-            {...register('end', { onChange: () => create.reset() })}
+            aria-invalid={fieldError('end') ? true : undefined}
+            aria-describedby={fieldError('end') ? 'end-error' : undefined}
+            {...register('end', fieldProps)}
           />
         </Field>
       </div>
 
-      {create.isError && (
+      {warnings.length > 0 && (
+        <WarningPanel
+          warnings={warnings}
+          disabled={create.isPending}
+          onConfirm={saveAnyway}
+          onKeepEditing={resetConfirmation}
+        />
+      )}
+
+      {create.isError && warnings.length === 0 && !serverField && (
         <div
           role="alert"
           className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive"
@@ -172,21 +211,6 @@ function Field({ label, id, error, children }: FieldProps) {
       )}
     </div>
   )
-}
-
-/** An hour ending now, which is the common case when logging time you just spent. */
-function defaults(): FormValues {
-  const end = new Date()
-  const start = new Date(end.getTime() - 60 * 60 * 1000)
-  return { comment: '', start: toDateTimeInput(start), end: toDateTimeInput(end) }
-}
-
-function valuesOf(entry: TimeEntry): FormValues {
-  return {
-    comment: entry.comment,
-    start: toDateTimeInput(parseISO(entry.start)),
-    end: toDateTimeInput(parseISO(entry.end)),
-  }
 }
 
 function errorMessage(error: Error, notFoundMessage: string): string {

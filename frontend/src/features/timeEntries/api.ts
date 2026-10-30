@@ -38,6 +38,8 @@ export interface NewEntry {
   start: string
   /** ISO 8601 */
   end: string
+  /** Codes of the warnings the user has confirmed (see the 409 answer). */
+  acceptedWarnings?: string[]
 }
 
 export function createTaskEntry(taskId: number, entry: NewEntry): Promise<TimeEntry> {

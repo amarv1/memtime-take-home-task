@@ -87,6 +87,10 @@ function EditEntry({ taskId, taskName, entry }: EditEntryProps) {
       submitLabel="Save changes"
       notFoundMessage="This time entry doesn't exist any more."
       onCancel={() => void navigate(entriesPath)}
+      onUnchanged={() => {
+        toast.info('No changes to save')
+        void navigate(entriesPath)
+      }}
       onSaved={(updated) => {
         toast.success(`Time entry #${updated.id} updated`)
         void navigate(entriesPath)
