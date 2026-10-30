@@ -30,7 +30,7 @@ import type { TaskLookup } from './timeEntries/taskLookup.ts'
 import { timeEntryRouter } from './timeEntries/timeEntryRouter.ts'
 import { createTimeEntryService } from './timeEntries/timeEntryService.ts'
 import type { TimeEntryService } from './timeEntries/timeEntryService.ts'
-import type { Snapshot } from './timeEntries/entrySnapshot.ts'
+import { snapshotSize, type Snapshot } from './timeEntries/entrySnapshot.ts'
 
 interface Options {
   env?: Env
@@ -78,10 +78,11 @@ export function createApp({
   }),
   timeEntryService = createTimeEntryService({
     client: memtimeClient,
-    // A few users at a time is plenty here; the cap only bounds memory.
+    // Capped by total entries held, so a few big accounts or many small ones both fit.
     cache: createMemoryCache<Snapshot>({
       ttlMs: env.TIME_ENTRIES_KEEP_MS,
-      maxEntries: 100,
+      maxSize: env.TIME_ENTRIES_CACHE_MAX_ENTRIES,
+      sizeOf: snapshotSize,
     }),
     freshMs: env.TIME_ENTRIES_CACHE_TTL_MS,
   }),

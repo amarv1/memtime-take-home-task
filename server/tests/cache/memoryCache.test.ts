@@ -52,6 +52,57 @@ describe('createMemoryCache', () => {
     expect(await cache.get('c')).toBe(3)
   })
 
+  it('drops the oldest items when over the total size cap', async () => {
+    const cache = createMemoryCache<number[]>({
+      ttlMs: 1000,
+      maxSize: 5,
+      sizeOf: (value) => value.length,
+    })
+
+    await cache.set('a', [1, 2])
+    await cache.set('b', [1, 2])
+    await cache.set('c', [1])
+    expect(await cache.get('a')).toBeDefined()
+
+    await cache.set('d', [1, 2, 3])
+
+    expect(await cache.get('a')).toBeUndefined()
+    expect(await cache.get('b')).toBeUndefined()
+    expect(await cache.get('c')).toBeDefined()
+    expect(await cache.get('d')).toBeDefined()
+  })
+
+  it('counts a rewritten or deleted item by its new size', async () => {
+    const cache = createMemoryCache<number[]>({
+      ttlMs: 1000,
+      maxSize: 4,
+      sizeOf: (value) => value.length,
+    })
+    await cache.set('a', [1, 2, 3])
+    await cache.set('a', [1])
+    await cache.set('b', [1, 2])
+    await cache.delete('b')
+
+    await cache.set('c', [1, 2, 3])
+
+    expect(await cache.get('a')).toBeDefined()
+    expect(await cache.get('c')).toBeDefined()
+  })
+
+  it('keeps the newest item even when it alone is over the cap', async () => {
+    const cache = createMemoryCache<number[]>({
+      ttlMs: 1000,
+      maxSize: 2,
+      sizeOf: (value) => value.length,
+    })
+    await cache.set('a', [1])
+
+    await cache.set('big', [1, 2, 3, 4])
+
+    expect(await cache.get('a')).toBeUndefined()
+    expect(await cache.get('big')).toBeDefined()
+  })
+
   it('deletes an item', async () => {
     const cache = createMemoryCache<number>({ ttlMs: 1000, maxEntries: 2 })
     await cache.set('a', 1)

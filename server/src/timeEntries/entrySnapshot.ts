@@ -34,6 +34,10 @@ export const emptySnapshot: Snapshot = {
   version: 0,
 }
 
+/** How many entries a snapshot holds, counting a partial reload; at least 1. */
+export const snapshotSize = (snapshot: Snapshot) =>
+  Math.max(1, (snapshot.entries?.length ?? 0) + (snapshot.reload?.entries.length ?? 0))
+
 const time = (iso: string) => Date.parse(iso)
 
 /** Whether a change made at `updatedAt` is one the check from `since` must pick up. */
