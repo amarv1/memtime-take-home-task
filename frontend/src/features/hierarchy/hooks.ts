@@ -54,17 +54,20 @@ export function useClients() {
 
 // The hooks below are only called by components that render while their node is
 // expanded, so a level is fetched only when the user opens it.
-export function useProjects(clientId: number) {
+// `enabled: false` holds the first load (and a reload) back; data already loaded still shows.
+export function useProjects(clientId: number, enabled = true) {
   return useInfiniteQuery({
     queryKey: hierarchyKeys.projects(clientId),
     ...paged((offset) => listProjects(clientId, offset)),
+    enabled,
   })
 }
 
-export function useTasks(projectId: number) {
+export function useTasks(projectId: number, enabled = true) {
   return useInfiniteQuery({
     queryKey: hierarchyKeys.tasks(projectId),
     ...paged((offset) => listTasks(projectId, offset)),
+    enabled,
   })
 }
 

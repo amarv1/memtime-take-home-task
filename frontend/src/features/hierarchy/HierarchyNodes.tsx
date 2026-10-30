@@ -4,7 +4,7 @@ import type { Client, Project, Task } from './api'
 import { NodeList } from './NodeList'
 import { StatusBadge } from './StatusBadge'
 import { TreeItem } from './TreeItem'
-import { childKey, useTree, useTreeSelector } from './treeContext'
+import { childKey, useIsPaused, useTree, useTreeSelector } from './treeContext'
 
 // Rows are memoized and read tree state through selectors, so a row renders again only
 // when its own item or its own flags change.
@@ -27,7 +27,8 @@ export const ClientItem = memo(function ClientItem({ client }: { client: Client 
 
 // Mounted only while the client is expanded, which is what makes the fetch lazy.
 function ProjectRows({ clientId, parentKey }: { clientId: number; parentKey: string }) {
-  const query = useProjects(clientId)
+  // Waits out a rate-limit pause instead of sending a request that would be refused.
+  const query = useProjects(clientId, !useIsPaused())
   const targetId = useTreeSelector((s) =>
     s.target?.clientId === clientId ? s.target.projectId : undefined,
   )
@@ -72,7 +73,7 @@ const ProjectItem = memo(function ProjectItem({
 })
 
 function TaskRows({ projectId, parentKey }: { projectId: number; parentKey: string }) {
-  const query = useTasks(projectId)
+  const query = useTasks(projectId, !useIsPaused())
   const targetId = useTreeSelector((s) =>
     s.target?.projectId === projectId ? s.target.taskId : undefined,
   )

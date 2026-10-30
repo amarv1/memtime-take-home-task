@@ -17,6 +17,10 @@ export interface TreeSnapshot {
   selectedTaskId: number | null
   /** Where the selected task lives, once known. Lists page forward until they hold it. */
   target: TreeTarget | null
+  /** Memtime is refusing reads: levels wait to load, and lists don't load more. */
+  paused: boolean
+  /** When the pause ends (ms since epoch), for the countdowns. */
+  pausedUntil: number
 }
 
 export interface TreeStore {
@@ -35,6 +39,8 @@ export function createTreeStore(): TreeStore {
     firstKey: '',
     selectedTaskId: null,
     target: null,
+    paused: false,
+    pausedUntil: 0,
   }
   const listeners = new Set<() => void>()
 
@@ -89,6 +95,8 @@ export function useTreeSelector<T extends string | number | boolean | null | und
 }
 
 export const useIsExpanded = (key: string) => useTreeSelector((s) => s.expanded.has(key))
+
+export const useIsPaused = () => useTreeSelector((s) => s.paused)
 
 /** Roving tabindex: the active item, or the first one until there is an active one. */
 export const useIsTabStop = (key: string) =>

@@ -221,56 +221,126 @@ describe('HierarchyTree', () => {
         { status: 429, headers: retryAfter ? { 'Retry-After': retryAfter } : {} },
       )
 
-    it('counts down on a level that is rate limited, then allows a retry', async () => {
-      // Before anything renders, so the countdown's timer is a fake one.
-      vi.useFakeTimers({ shouldAdvanceTime: true })
-      const { user } = await setup()
-      server.use(http.get('/api/clients/1/projects', () => limited('3')))
-      await toggle(user, 'Acme Corp')
-      const row = await screen.findByRole('treeitem', {
-        name: /Memtime is receiving too many requests\./,
+    // The server only answers 429 when the reset is more than its own 5 s wait away, and a
+    // request sent within those last 5 s goes through. So the tree waits `Retry-After` - 5 s.
+    const waiting = (seconds: number) =>
+      screen.findAllByRole('treeitem', {
+        name: `Waiting for Memtime… loads in ${seconds}s`,
       })
 
-      expect(row).toHaveTextContent('Try again in 3s')
-      expect(row).toHaveAttribute('aria-disabled', 'true')
-      expect(row).not.toHaveTextContent("Couldn't load")
+    it('waits on a level that is rate limited, then loads it by itself', async () => {
+      // Before anything renders, so the countdown's timer is a fake one.
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { requests, user } = await setup()
+      server.use(http.get('/api/clients/1/projects', () => limited('8'), { once: true }))
+      await toggle(user, 'Acme Corp')
+
+      await waiting(3)
+      expect(screen.queryByText(/Couldn't load/)).toBeNull()
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3000)
       })
 
-      expect(row).toHaveTextContent(/Try again$/)
-      expect(row).not.toHaveAttribute('aria-disabled')
+      expect(await screen.findByRole('treeitem', { name: 'Website' })).toBeInTheDocument()
+      expect(requests).toEqual([
+        CLIENTS_REQUEST,
+        '/api/clients/1/projects?limit=100&offset=0',
+      ])
     })
 
-    it('does not retry by itself', async () => {
+    it('asks again only when the wait is over, and waits again if refused', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true })
       const { user } = await setup()
       let calls = 0
       server.use(
         http.get('/api/clients/1/projects', () => {
           calls += 1
-          return limited('1')
+          return limited('8')
         }),
       )
       await toggle(user, 'Acme Corp')
-      await screen.findByRole('treeitem', { name: /too many requests/ })
+      await waiting(3)
 
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(5000)
+        await vi.advanceTimersByTimeAsync(2900)
       })
-
       expect(calls).toBe(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200)
+      })
+      await waitFor(() => expect(calls).toBe(2))
+      expect(await waiting(3)).toHaveLength(1)
     })
 
-    it('counts down 60 s without a Retry-After', async () => {
+    it('holds levels opened during the wait, and loads them when it ends', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { requests, user } = await setup()
+      await toggle(user, 'Acme Corp')
+      await screen.findByRole('treeitem', { name: 'Website' })
+      server.use(http.get('/api/clients/2/projects', () => limited('8'), { once: true }))
+      await toggle(user, 'Empty Inc')
+      await waiting(3)
+      const before = requests.length
+
+      await toggle(user, 'Mystery Ltd')
+      expect(await waiting(3)).toHaveLength(2)
+      // A loaded level costs nothing, so it still shows at once.
+      await toggle(user, 'Acme Corp')
+      await toggle(user, 'Acme Corp')
+      expect(item('Website')).toBeInTheDocument()
+      expect(requests).toHaveLength(before)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
+      await waitFor(() =>
+        expect(screen.getAllByRole('treeitem', { name: 'No projects' })).toHaveLength(2),
+      )
+      expect(requests.slice(before).sort()).toEqual([
+        '/api/clients/2/projects?limit=100&offset=0',
+        '/api/clients/3/projects?limit=100&offset=0',
+      ])
+    })
+
+    it('holds "Load more" during the wait', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      const { user } = await setup({ ...hierarchyFixture, clients: manyClients(150) })
+      server.use(http.get('/api/clients/1/projects', () => limited('8'), { once: true }))
+      await toggle(user, 'Client 1')
+      await waiting(3)
+
+      const loadMore = item('Load more clients in 3s')
+      expect(loadMore).toHaveAttribute('aria-disabled', 'true')
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3000)
+      })
+
+      expect(loadMore).toHaveAccessibleName('Load more clients')
+      expect(loadMore).not.toHaveAttribute('aria-disabled')
+    })
+
+    it('waits 55 s without a Retry-After', async () => {
       const { user } = await setup()
       server.use(http.get('/api/clients/1/projects', () => limited()))
       await toggle(user, 'Acme Corp')
 
-      expect(
-        await screen.findByRole('treeitem', { name: /Try again in 60s/ }),
-      ).toBeInTheDocument()
+      expect(await waiting(55)).toHaveLength(1)
+    })
+
+    it('offers a retry at once when the reset is within the server wait', async () => {
+      const { user } = await setup()
+      server.use(http.get('/api/clients/1/projects', () => limited('3')))
+      await toggle(user, 'Acme Corp')
+
+      const row = await screen.findByRole('treeitem', {
+        name: /Memtime is receiving too many requests\./,
+      })
+      expect(row).toHaveTextContent(/Try again$/)
+      expect(row).not.toHaveAttribute('aria-disabled')
     })
 
     it('counts down when the clients themselves are rate limited', async () => {

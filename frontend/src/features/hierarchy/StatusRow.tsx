@@ -1,8 +1,9 @@
 import { Loader2 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useSecondsUntil } from '@/lib/rateLimit'
 import { cn } from '@/lib/utils'
 import { indent, rowClass } from './rowStyle'
-import { useIsTabStop } from './treeContext'
+import { useIsTabStop, useTreeSelector } from './treeContext'
 
 interface Props {
   level: number
@@ -49,6 +50,11 @@ export function StatusRow({ level, nodeKey, onActivate, disabled, children }: Pr
       </div>
     </li>
   )
+}
+
+/** Seconds until the tree's pause ends. Its own component, so only it re-renders each second. */
+export function PauseSeconds() {
+  return useSecondsUntil(useTreeSelector((s) => s.pausedUntil))
 }
 
 export function Spinner() {

@@ -2,7 +2,12 @@ import { Loader2 } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
+import {
+  RATE_LIMITED_MESSAGE,
+  isRateLimited,
+  useCountdown,
+  useRateLimitedUntil,
+} from '@/lib/rateLimit'
 import { ClientItem } from './HierarchyNodes'
 import { parseTaskId, useClients, useProject, useTask } from './hooks'
 import { NodeList } from './NodeList'
@@ -97,6 +102,16 @@ export function HierarchyTree() {
     [store],
   )
   const onKeyDown = useTreeKeyboard(store.toggle)
+
+  // Rows read the pause as a flag; a timer ends it, so the tree doesn't re-render every second.
+  const pausedUntil = useRateLimitedUntil()
+  useLayoutEffect(() => {
+    const left = pausedUntil - Date.now()
+    store.set({ paused: left > 0, pausedUntil })
+    if (left <= 0) return
+    const timer = setTimeout(() => store.set({ paused: false }), left)
+    return () => clearTimeout(timer)
+  }, [store, pausedUntil])
 
   // If the item that was in the tab order is gone (its parent collapsed, or a
   // "Load more" row vanished), fall back to the first item so Tab still reaches the tree.

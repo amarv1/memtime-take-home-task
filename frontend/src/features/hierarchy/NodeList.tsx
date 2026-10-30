@@ -1,12 +1,13 @@
 import { useEffect, type ReactNode } from 'react'
 import { RATE_LIMITED_MESSAGE, isRateLimited, useCountdown } from '@/lib/rateLimit'
-import { Spinner, StatusRow } from './StatusRow'
-import { childKey } from './treeContext'
+import { PauseSeconds, Spinner, StatusRow } from './StatusRow'
+import { childKey, useIsPaused } from './treeContext'
 
 /** The part of an infinite query the list needs. */
 export interface ListQuery<T> {
   data: T[] | undefined
   isPending: boolean
+  isFetching: boolean
   isError: boolean
   error: Error | null
   isFetchNextPageError: boolean
@@ -39,16 +40,29 @@ export function NodeList<T extends { id: number }>({
   const { data, isPending, isError, error, isFetchNextPageError } = query
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query
   const secondsLeft = useCountdown(error)
+  const paused = useIsPaused()
   const missing = targetId !== undefined && !data?.some((item) => item.id === targetId)
 
   // Stops when the item shows up, the pages run out, or a page fails (the error row takes over).
+  // Waits out a pause, then goes on by itself.
   useEffect(() => {
-    if (missing && hasNextPage && !isFetchingNextPage && !isError) {
+    if (missing && hasNextPage && !isFetchingNextPage && !isError && !paused) {
       void fetchNextPage()
     }
-  }, [missing, hasNextPage, isFetchingNextPage, isError, fetchNextPage])
+  }, [missing, hasNextPage, isFetchingNextPage, isError, paused, fetchNextPage])
 
   const key = (segment: string) => childKey(parentKey, `status:${segment}`)
+
+  // Nothing to show yet and its load is held back by the pause (see HierarchyNodes). It loads
+  // when the pause ends; that includes a level whose own load was refused.
+  if (paused && data === undefined && !query.isFetching) {
+    return (
+      <StatusRow level={level} nodeKey={key('waiting')}>
+        <Spinner />
+        Waiting for Memtime… loads in <PauseSeconds />s
+      </StatusRow>
+    )
+  }
 
   if (isPending) {
     return (
@@ -60,6 +74,9 @@ export function NodeList<T extends { id: number }>({
   }
 
   const items = data ?? []
+  // A 429 waits for the pause, which ends when a retry would go through; other errors keep
+  // their own countdown.
+  const errorWait = isRateLimited(error) ? 0 : secondsLeft
 
   return (
     <>
@@ -77,7 +94,7 @@ export function NodeList<T extends { id: number }>({
           onActivate={() =>
             void (isFetchNextPageError ? query.fetchNextPage() : query.refetch())
           }
-          disabled={secondsLeft > 0}
+          disabled={errorWait > 0 || paused}
         >
           <span className="min-w-0 truncate">
             {isRateLimited(error)
@@ -85,7 +102,15 @@ export function NodeList<T extends { id: number }>({
               : `Couldn't load ${noun}. ${error?.message}`}
           </span>
           <span className="shrink-0 font-medium text-foreground underline">
-            {secondsLeft > 0 ? `Try again in ${secondsLeft}s` : 'Try again'}
+            {errorWait > 0 ? (
+              `Try again in ${errorWait}s`
+            ) : paused ? (
+              <>
+                Try again in <PauseSeconds />s
+              </>
+            ) : (
+              'Try again'
+            )}
           </span>
         </StatusRow>
       ) : (
@@ -94,7 +119,7 @@ export function NodeList<T extends { id: number }>({
             level={level}
             nodeKey={key('load-more')}
             onActivate={() => void query.fetchNextPage()}
-            disabled={query.isFetchingNextPage}
+            disabled={query.isFetchingNextPage || paused}
           >
             {query.isFetchingNextPage ? (
               <>
@@ -102,7 +127,15 @@ export function NodeList<T extends { id: number }>({
                 Loading more…
               </>
             ) : (
-              <>Load more {noun}</>
+              <>
+                Load more {noun}
+                {paused && (
+                  <>
+                    {' '}
+                    in <PauseSeconds />s
+                  </>
+                )}
+              </>
             )}
           </StatusRow>
         )
