@@ -29,11 +29,13 @@ export function createMemtimeClient({
   const baseUrl = memtimeApiUrl.replace(/\/+$/, '')
 
   /** `label` names the call in logs (a route pattern), so the key and the URL stay out of them. */
-  async function get(
+  async function send(
+    method: 'GET' | 'POST',
     apiKey: string,
     upstreamPath: string,
     search: string,
     label: string,
+    payload?: unknown,
   ): Promise<MemtimeResponse> {
     const url = `${baseUrl}${upstreamPath}${search ? `?${search}` : ''}`
 
@@ -43,10 +45,13 @@ export function createMemtimeClient({
     try {
       // Looked up per call so a patched global fetch (as in tests) is always picked up.
       const upstream = await (fetch ?? globalThis.fetch)(url, {
+        method,
         headers: {
           Authorization: `Bearer ${apiKey}`,
           Accept: 'application/json',
+          ...(payload === undefined ? {} : { 'Content-Type': 'application/json' }),
         },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: AbortSignal.timeout(timeoutMs),
       })
       status = upstream.status
@@ -69,5 +74,10 @@ export function createMemtimeClient({
     return { status, headers, body }
   }
 
-  return { get }
+  return {
+    get: (apiKey: string, upstreamPath: string, search: string, label: string) =>
+      send('GET', apiKey, upstreamPath, search, label),
+    post: (apiKey: string, upstreamPath: string, payload: unknown, label: string) =>
+      send('POST', apiKey, upstreamPath, '', label, payload),
+  }
 }

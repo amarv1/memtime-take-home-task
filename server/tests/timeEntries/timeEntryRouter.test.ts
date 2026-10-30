@@ -200,3 +200,181 @@ describe('GET /api/tasks/:taskId/entries', () => {
     expect(upstreamCalls).toHaveLength(0)
   })
 })
+
+describe('POST /api/tasks/:taskId/entries', () => {
+  const store = createSessionStore({ ttlMs: 60_000 })
+  afterAll(() => store.stop())
+
+  let app: ReturnType<typeof createApp>
+  beforeEach(() => {
+    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+  })
+
+  const cookie = () => `memtime_sid=${store.create(KEY).id}`
+  const valid = {
+    comment: 'Fix the header',
+    start: '2025-01-01T09:00:00Z',
+    end: '2025-01-01T10:00:00+00:00',
+  }
+  let posted: unknown[]
+  let listCalls: number
+
+  function mockUpstream(respond?: () => Response) {
+    posted = []
+    listCalls = 0
+    server.use(
+      http.get(`${BASE}/time-entries`, ({ request }) => {
+        listCalls++
+        return HttpResponse.json(page([], new URL(request.url)))
+      }),
+      http.post(`${BASE}/time-entries`, async ({ request }) => {
+        posted.push({
+          auth: request.headers.get('authorization'),
+          ...((await request.json()) as object),
+        })
+        return (
+          respond?.() ??
+          HttpResponse.json(
+            { id: 77, userId: 1, ...(posted[0] as object) },
+            { status: 201 },
+          )
+        )
+      }),
+    )
+  }
+
+  it('answers 401 without a session and posts nothing', async () => {
+    mockUpstream()
+
+    const res = await request(app).post('/api/tasks/5/entries').send(valid)
+
+    expect(res.status).toBe(401)
+    expect(posted).toHaveLength(0)
+  })
+
+  it('creates the entry upstream for the task in the URL and answers 201', async () => {
+    mockUpstream()
+
+    const res = await request(app)
+      .post('/api/tasks/5/entries')
+      .set('Cookie', cookie())
+      .send({ ...valid, taskId: 999, userId: 3 })
+
+    expect(res.status).toBe(201)
+    expect(res.headers['cache-control']).toBe('private, no-store')
+    expect((res.body as { id: number }).id).toBe(77)
+    expect(posted).toEqual([
+      {
+        auth: `Bearer ${KEY}`,
+        taskId: 5,
+        comment: 'Fix the header',
+        start: '2025-01-01T09:00:00.000Z',
+        end: '2025-01-01T10:00:00.000Z',
+      },
+    ])
+  })
+
+  it('makes the next read load fresh entries', async () => {
+    mockUpstream()
+    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+    await request(app).post('/api/tasks/5/entries').set('Cookie', cookie()).send(valid)
+    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+    expect(listCalls).toBe(2)
+  })
+
+  it.each([
+    [
+      'a missing comment',
+      { ...valid, comment: undefined },
+      'Invalid comment: is required',
+    ],
+    ['a blank comment', { ...valid, comment: '   ' }, 'Invalid comment: is required'],
+    [
+      'a long comment',
+      { ...valid, comment: 'x'.repeat(1001) },
+      'Invalid comment: must be at most 1000 characters',
+    ],
+    ['a missing start', { ...valid, start: undefined }, 'Invalid start: is required'],
+    [
+      'a start that is not a date',
+      { ...valid, start: 'tomorrow' },
+      'Invalid start: must be an ISO 8601 date and time',
+    ],
+    [
+      'an end without a time zone',
+      { ...valid, end: '2025-01-01T10:00:00' },
+      'Invalid end: must be an ISO 8601 date and time',
+    ],
+    [
+      'an end before the start',
+      { ...valid, end: valid.start },
+      'Invalid end: must be after start',
+    ],
+  ])('answers 400 for %s without calling upstream', async (_name, body, error) => {
+    mockUpstream()
+
+    const res = await request(app)
+      .post('/api/tasks/5/entries')
+      .set('Cookie', cookie())
+      .send(body)
+
+    expect(res.status).toBe(400)
+    expect(json(res).error).toBe(error)
+    expect(posted).toHaveLength(0)
+  })
+
+  it('answers 400 for an invalid task id', async () => {
+    mockUpstream()
+
+    const res = await request(app)
+      .post('/api/tasks/abc/entries')
+      .set('Cookie', cookie())
+      .send(valid)
+
+    expect(res.status).toBe(400)
+    expect(json(res).error).toBe('Invalid task id')
+  })
+
+  it.each([
+    [400, 400, 'Memtime did not accept this time entry.'],
+    [404, 404, 'Task not found'],
+    [500, 502, 'Memtime could not save the time entry.'],
+  ])('maps upstream %i to %i', async (upstream, status, error) => {
+    mockUpstream(() => HttpResponse.json({ error: 'raw' }, { status: upstream }))
+
+    const res = await request(app)
+      .post('/api/tasks/5/entries')
+      .set('Cookie', cookie())
+      .send(valid)
+
+    expect(res.status).toBe(status)
+    expect(json(res).error).toBe(error)
+  })
+
+  it('passes a rate limit on with its Retry-After', async () => {
+    mockUpstream(() =>
+      HttpResponse.json({}, { status: 429, headers: { 'Retry-After': '30' } }),
+    )
+
+    const res = await request(app)
+      .post('/api/tasks/5/entries')
+      .set('Cookie', cookie())
+      .send(valid)
+
+    expect(res.status).toBe(429)
+    expect(res.headers['retry-after']).toBe('30')
+  })
+
+  it('answers 502 when upstream sends an unexpected body', async () => {
+    mockUpstream(() => HttpResponse.text('created', { status: 201 }))
+
+    const res = await request(app)
+      .post('/api/tasks/5/entries')
+      .set('Cookie', cookie())
+      .send(valid)
+
+    expect(res.status).toBe(502)
+  })
+})

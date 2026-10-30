@@ -22,8 +22,25 @@ interface Options {
 // The largest page the API serves. A shorter page is the last one.
 const PAGE_SIZE = 100
 
+function throwIfRateLimited(status: number, headers: Headers) {
+  if (status !== 429) return
+  const retryAfter = headers.get('retry-after')
+  throw new HttpError(
+    429,
+    'Memtime is receiving too many requests. Please try again in a minute.',
+    retryAfter === null ? undefined : { 'Retry-After': retryAfter },
+  )
+}
+
 // Entries belong to the key's owner, so the key (hashed, never stored raw) is the cache key.
 const cacheKey = (apiKey: string) => createHash('sha256').update(apiKey).digest('hex')
+
+export interface NewEntry {
+  taskId: number
+  comment: string
+  start: string
+  end: string
+}
 
 export type TimeEntryService = ReturnType<typeof createTimeEntryService>
 
@@ -43,14 +60,7 @@ export function createTimeEntryService({ client, cache }: Options) {
       '/api/tasks/:taskId/entries',
     )
 
-    if (status === 429) {
-      const retryAfter = headers.get('retry-after')
-      throw new HttpError(
-        429,
-        'Memtime is receiving too many requests. Please try again in a minute.',
-        retryAfter === null ? undefined : { 'Retry-After': retryAfter },
-      )
-    }
+    throwIfRateLimited(status, headers)
     if (status < 200 || status >= 300)
       throw new HttpError(502, 'Memtime could not return the time entries.')
 
@@ -90,6 +100,34 @@ export function createTimeEntryService({ client, cache }: Options) {
         .finally(() => inFlight.delete(key))
       inFlight.set(key, promise)
       return promise
+    },
+
+    /** Creates an entry for the key's owner, then drops the cached list so the next read has it. */
+    async createEntry(apiKey: string, entry: NewEntry): Promise<TimeEntry> {
+      const { status, headers, body } = await client.post(
+        apiKey,
+        '/time-entries',
+        entry,
+        '/api/tasks/:taskId/entries',
+      )
+
+      throwIfRateLimited(status, headers)
+      if (status === 400)
+        throw new HttpError(400, 'Memtime did not accept this time entry.')
+      if (status === 404) throw new HttpError(404, 'Task not found')
+      if (status < 200 || status >= 300)
+        throw new HttpError(502, 'Memtime could not save the time entry.')
+
+      // The entry exists upstream from here on, so the cache is stale whatever the body says.
+      await this.invalidate(apiKey)
+      try {
+        const created: unknown = JSON.parse(body)
+        if (typeof created === 'object' && created !== null && 'id' in created)
+          return created as TimeEntry
+      } catch {
+        // Falls through to the error below.
+      }
+      throw new HttpError(502, 'Memtime sent an unexpected answer.')
     },
 
     /** For create, update and delete of entries to call, so the next read loads fresh data. */

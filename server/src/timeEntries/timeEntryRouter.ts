@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { z } from 'zod'
 import { HttpError } from '../middleware/errorHandler.ts'
 import { getSession, requireSession } from '../middleware/requireSession.ts'
 import type { SessionStore } from '../sessions/sessionStore.ts'
@@ -32,7 +33,27 @@ function intParam(
   return number
 }
 
-/** One task's time entries, newest first, from the key owner's cached entries. */
+const isoDateTime = z
+  .string({ error: 'is required' })
+  .datetime({ offset: true, error: 'must be an ISO 8601 date and time' })
+  .transform((value) => new Date(value).toISOString())
+
+const entryBody = z
+  .object({
+    comment: z
+      .string({ error: 'is required' })
+      .trim()
+      .min(1, 'is required')
+      .max(1000, 'must be at most 1000 characters'),
+    start: isoDateTime,
+    end: isoDateTime,
+  })
+  .refine((entry) => Date.parse(entry.end) > Date.parse(entry.start), {
+    path: ['end'],
+    message: 'must be after start',
+  })
+
+/** Reads and creates one task's time entries; reads come from the key owner's cached entries. */
 export function timeEntryRouter({ store, service }: Options) {
   const router = Router()
 
@@ -56,6 +77,31 @@ export function timeEntryRouter({ store, service }: Options) {
       limit,
       offset,
     })
+  })
+
+  router.post('/tasks/:taskId/entries', requireSession(store), async (req, res) => {
+    const { taskId } = req.params
+    if (typeof taskId !== 'string' || !ID_PATTERN.test(taskId))
+      throw new HttpError(400, 'Invalid task id')
+    const parsed = entryBody.safeParse(req.body)
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = issue?.path[0]
+      throw new HttpError(
+        400,
+        typeof field === 'string'
+          ? `Invalid ${field}: ${issue?.message}`
+          : 'Invalid time entry',
+      )
+    }
+
+    const created = await service.createEntry(getSession(res).apiKey, {
+      taskId: Number(taskId),
+      ...parsed.data,
+    })
+
+    res.setHeader('Cache-Control', 'private, no-store')
+    res.status(201).json(created)
   })
 
   return router
