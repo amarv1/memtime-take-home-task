@@ -560,3 +560,108 @@ describe('/api/tasks/:taskId/entries/:entryId', () => {
     })
   })
 })
+
+describe('DELETE /api/tasks/:taskId/entries/:entryId', () => {
+  const store = createSessionStore({ ttlMs: 60_000 })
+  afterAll(() => store.stop())
+
+  let app: ReturnType<typeof createApp>
+  beforeEach(() => {
+    app = createApp({ env: loadEnv({ MEMTIME_API_URL: BASE }), sessionStore: store })
+  })
+
+  const cookie = () => `memtime_sid=${store.create(KEY).id}`
+  const entries = [buildEntry(0, 5), buildEntry(1, 5), buildEntry(2, 6)]
+  let deleted: { id: string; auth: string | null }[]
+  let listCalls: number
+
+  function mockUpstream(respond?: () => Response) {
+    deleted = []
+    listCalls = 0
+    server.use(
+      http.get(`${BASE}/time-entries`, ({ request }) => {
+        listCalls++
+        return HttpResponse.json(page(entries, new URL(request.url)))
+      }),
+      http.delete(`${BASE}/time-entries/:id`, ({ request, params }) => {
+        deleted.push({
+          id: String(params.id),
+          auth: request.headers.get('authorization'),
+        })
+        return (
+          respond?.() ?? HttpResponse.json({ message: 'Time entry deleted successfully' })
+        )
+      }),
+    )
+  }
+
+  it('answers 401 without a session and deletes nothing', async () => {
+    mockUpstream()
+    const res = await request(app).delete('/api/tasks/5/entries/1')
+    expect(res.status).toBe(401)
+    expect(deleted).toHaveLength(0)
+  })
+
+  it.each(['1', '0'])('deletes entry %s upstream and answers 204', async (id) => {
+    mockUpstream()
+
+    const res = await request(app)
+      .delete(`/api/tasks/5/entries/${id}`)
+      .set('Cookie', cookie())
+
+    expect(res.status).toBe(204)
+    expect(deleted).toEqual([{ id, auth: `Bearer ${KEY}` }])
+  })
+
+  it('makes the next read load fresh entries', async () => {
+    mockUpstream()
+    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+    await request(app).delete('/api/tasks/5/entries/1').set('Cookie', cookie())
+    await request(app).get('/api/tasks/5/entries').set('Cookie', cookie())
+
+    expect(listCalls).toBe(2)
+  })
+
+  it.each(['/api/tasks/5/entries/2', '/api/tasks/5/entries/99'])(
+    'answers 404 for %s (another task’s or unknown) without deleting',
+    async (url) => {
+      mockUpstream()
+      const res = await request(app).delete(url).set('Cookie', cookie())
+      expect(res.status).toBe(404)
+      expect(deleted).toHaveLength(0)
+    },
+  )
+
+  it('answers 400 for an invalid entry id', async () => {
+    mockUpstream()
+    const res = await request(app)
+      .delete('/api/tasks/5/entries/x')
+      .set('Cookie', cookie())
+    expect(res.status).toBe(400)
+    expect(deleted).toHaveLength(0)
+  })
+
+  it.each([
+    [404, 404, 'Time entry not found'],
+    [500, 502, 'Memtime could not delete the time entry.'],
+  ])('maps upstream %i to %i', async (upstream, status, error) => {
+    mockUpstream(() => HttpResponse.json({ error: 'raw' }, { status: upstream }))
+    const res = await request(app)
+      .delete('/api/tasks/5/entries/1')
+      .set('Cookie', cookie())
+    expect(res.status).toBe(status)
+    expect((res.body as { error: string }).error).toBe(error)
+  })
+
+  it('passes a rate limit on with its Retry-After', async () => {
+    mockUpstream(() =>
+      HttpResponse.json({}, { status: 429, headers: { 'Retry-After': '30' } }),
+    )
+    const res = await request(app)
+      .delete('/api/tasks/5/entries/1')
+      .set('Cookie', cookie())
+    expect(res.status).toBe(429)
+    expect(res.headers['retry-after']).toBe('30')
+  })
+})

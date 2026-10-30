@@ -81,7 +81,7 @@ function readEntryBody(body: unknown) {
   )
 }
 
-/** Reads, creates and updates one task's time entries; reads come from the key owner's cached entries. */
+/** Reads, creates, updates and deletes one task's time entries; reads come from the key owner's cached entries. */
 export function timeEntryRouter({ store, service }: Options) {
   const router = Router()
 
@@ -149,6 +149,23 @@ export function timeEntryRouter({ store, service }: Options) {
 
       res.setHeader('Cache-Control', 'private, no-store')
       res.json(updated)
+    },
+  )
+
+  router.delete(
+    '/tasks/:taskId/entries/:entryId',
+    requireSession(store),
+    async (req, res) => {
+      const { taskId, entryId } = readIds(req.params)
+      const { apiKey } = getSession(res)
+
+      // The URL's task must own the entry, or this could delete another task's entry.
+      const all = await service.getAllEntries(apiKey)
+      if (!all.some((e) => e.id === entryId && e.taskId === taskId))
+        throw new HttpError(404, 'Time entry not found')
+
+      await service.deleteEntry(apiKey, entryId)
+      res.status(204).end()
     },
   )
 

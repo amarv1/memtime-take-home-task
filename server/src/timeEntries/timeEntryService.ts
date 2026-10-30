@@ -152,6 +152,22 @@ export function createTimeEntryService({ client, cache }: Options) {
       return saved(apiKey, response, 'Time entry not found')
     },
 
+    /** Deletes an entry of the key's owner, then drops the cached list. */
+    async deleteEntry(apiKey: string, id: number): Promise<void> {
+      const { status, headers } = await client.delete(
+        apiKey,
+        `/time-entries/${id}`,
+        '/api/tasks/:taskId/entries/:entryId',
+      )
+
+      throwIfRateLimited(status, headers)
+      if (status === 404) throw new HttpError(404, 'Time entry not found')
+      if (status < 200 || status >= 300)
+        throw new HttpError(502, 'Memtime could not delete the time entry.')
+
+      await invalidate(apiKey)
+    },
+
     /** For create, update and delete of entries to call, so the next read loads fresh data. */
     invalidate,
   }
